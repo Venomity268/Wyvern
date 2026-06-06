@@ -18,6 +18,13 @@ export function runMigrations(db: Database.Database) {
   migrateHostInfoMetrics(db);
   migrateFolders(db);
   migrateTotp(db);
+  migrateUserAvatar(db);
+}
+
+function migrateUserAvatar(db: Database.Database) {
+  const sql = tableSql(db, "users");
+  if (!sql || sql.includes("avatar_updated_at")) return;
+  db.exec("ALTER TABLE users ADD COLUMN avatar_updated_at TEXT");
 }
 
 function migrateTotp(db: Database.Database) {

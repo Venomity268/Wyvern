@@ -1,4 +1,5 @@
 import { createHmac, randomBytes } from "crypto";
+import { APP_NAME } from "@/lib/brand";
 
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
@@ -90,7 +91,7 @@ export function verifyTotpToken(secret: string, token: string, window = 1): bool
 }
 
 export function getTotpAuthUri(email: string, secret: string): string {
-  const label = encodeURIComponent(`wterm-bastion:${email}`);
-  const issuer = encodeURIComponent("wterm-bastion");
+  const label = encodeURIComponent(`${APP_NAME}:${email}`);
+  const issuer = encodeURIComponent(APP_NAME);
   return `otpauth://totp/${label}?secret=${secret}&issuer=${issuer}`;
 }

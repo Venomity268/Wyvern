@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { UserAvatar } from "@/components/UserAvatar";
+import { resizeImageToDataUrl } from "@/lib/client/avatar-image";
+import { Shield, Users } from "lucide-react";
 import QRCode from "qrcode";
 
 interface ProfileUser {
@@ -14,14 +21,19 @@ interface ProfileUser {
   displayName: string | null;
   createdAt: string;
   totpEnabled?: boolean;
+  avatarUrl?: string | null;
 }
 
 export default function SettingsPage() {
+  const router = useRouter();
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [profile, setProfile] = useState<ProfileUser | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [profileSuccess, setProfileSuccess] = useState(false);
+  const [avatarLoading, setAvatarLoading] = useState(false);
+  const [avatarError, setAvatarError] = useState("");
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -71,6 +83,62 @@ export default function SettingsPage() {
     }
     setProfile(data.user);
     setProfileSuccess(true);
+  }
+
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setAvatarError("Please choose an image file");
+      return;
+    }
+
+    setAvatarLoading(true);
+    setAvatarError("");
+
+    try {
+      const avatarDataUrl = await resizeImageToDataUrl(file);
+      const res = await fetch("/api/auth/avatar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatarDataUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAvatarError(data.error || "Failed to update avatar");
+        return;
+      }
+
+      setProfile((prev) => (prev ? { ...prev, avatarUrl: data.avatarUrl } : prev));
+      router.refresh();
+    } catch {
+      setAvatarError("Failed to update avatar");
+    } finally {
+      setAvatarLoading(false);
+    }
+  }
+
+  async function handleAvatarRemove() {
+    setAvatarLoading(true);
+    setAvatarError("");
+
+    try {
+      const res = await fetch("/api/auth/avatar", { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        setAvatarError(data.error || "Failed to remove avatar");
+        return;
+      }
+
+      setProfile((prev) => (prev ? { ...prev, avatarUrl: null } : prev));
+      router.refresh();
+    } catch {
+      setAvatarError("Failed to remove avatar");
+    } finally {
+      setAvatarLoading(false);
+    }
   }
 
   async function handlePasswordSubmit(e: React.FormEvent) {
@@ -194,11 +262,26 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Settings</h1>
-        <p className="text-sm text-muted">Account profile and security.</p>
-      </div>
+    <div className="mx-auto max-w-2xl space-y-8">
+      <PageHeader title="Settings" description="Account profile and security." />
+
+      {profile?.role === "admin" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>User management</CardTitle>
+            <p className="text-sm text-muted">Create accounts, assign roles, and manage access.</p>
+          </CardHeader>
+          <CardContent>
+            <Link
+              href="/admin/users"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-input px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              <Users className="h-4 w-4" />
+              Manage users
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -206,6 +289,47 @@ export default function SettingsPage() {
           <p className="text-sm text-muted">Your account details. Email is managed by an administrator.</p>
         </CardHeader>
         <CardContent>
+          <div className="mb-6 flex flex-wrap items-center gap-4 border-b border-border pb-6">
+            <UserAvatar
+              displayName={displayName || profile?.displayName}
+              email={profile?.email || ""}
+              avatarUrl={profile?.avatarUrl}
+              size="lg"
+            />
+            <div className="space-y-2">
+              <p className="text-sm text-muted">Your avatar appears in the sidebar and across the app.</p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={avatarLoading}
+                  onClick={() => avatarInputRef.current?.click()}
+                >
+                  {avatarLoading ? "Uploading…" : "Change photo"}
+                </Button>
+                {profile?.avatarUrl && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={avatarLoading}
+                    onClick={() => void handleAvatarRemove()}
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(e) => void handleAvatarChange(e)}
+              />
+              {avatarError && <p className="text-sm text-destructive">{avatarError}</p>}
+            </div>
+          </div>
           <form onSubmit={saveProfile} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -213,7 +337,7 @@ export default function SettingsPage() {
                 id="email"
                 value={profile?.email || ""}
                 readOnly
-                className="bg-zinc-900 text-muted"
+                className="text-muted-foreground"
               />
             </div>
             <div className="space-y-2">
@@ -231,8 +355,8 @@ export default function SettingsPage() {
                 Member since {new Date(profile.createdAt + "Z").toLocaleDateString()}
               </p>
             )}
-            {profileError && <p className="text-sm text-red-400">{profileError}</p>}
-            {profileSuccess && <p className="text-sm text-emerald-400">Profile updated.</p>}
+            {profileError && <p className="text-sm text-destructive">{profileError}</p>}
+            {profileSuccess && <p className="text-sm text-success">Profile updated.</p>}
             <Button type="submit" disabled={profileLoading}>
               {profileLoading ? "Saving…" : "Save profile"}
             </Button>
@@ -278,8 +402,8 @@ export default function SettingsPage() {
                 required
               />
             </div>
-            {passwordError && <p className="text-sm text-red-400">{passwordError}</p>}
-            {passwordSuccess && <p className="text-sm text-emerald-400">Password updated.</p>}
+            {passwordError && <p className="text-sm text-destructive">{passwordError}</p>}
+            {passwordSuccess && <p className="text-sm text-success">Password updated.</p>}
             <Button type="submit" disabled={passwordLoading}>
               {passwordLoading ? "Saving…" : "Update password"}
             </Button>
@@ -293,20 +417,25 @@ export default function SettingsPage() {
           <p className="text-sm text-muted">Secure your account with a time-based verification code (TOTP).</p>
         </CardHeader>
         <CardContent className="space-y-4">
-          {totpSuccessMsg && <p className="text-sm text-emerald-400 font-medium">{totpSuccessMsg}</p>}
+          {totpSuccessMsg && <p className="text-sm font-medium text-success">{totpSuccessMsg}</p>}
 
-          {profile?.totpEnabled ? (
+          {profile?.totpEnabled ?
             <div className="space-y-4">
-              <div className="flex items-center gap-2 rounded-lg border border-emerald-950 bg-emerald-950/20 p-3 text-sm text-emerald-400">
-                <span className="text-lg">🛡️</span>
+              <div className="flex items-start gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm">
+                <Shield className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
                 <div>
-                  <span className="font-semibold block">2FA is Enabled</span>
-                  <span>Your account is protected by an additional verification code step at login.</span>
+                  <div className="mb-1 flex items-center gap-2">
+                    <span className="font-semibold text-foreground">2FA is enabled</span>
+                    <Badge variant="success">Active</Badge>
+                  </div>
+                  <span className="text-muted-foreground">
+                    Your account is protected by an additional verification code step at login.
+                  </span>
                 </div>
               </div>
 
-              <form onSubmit={handleDisableTotp} className="space-y-3 pt-2 border-t border-zinc-800">
-                <h4 className="text-sm font-medium text-zinc-200">Disable 2FA</h4>
+              <form onSubmit={handleDisableTotp} className="space-y-3 border-t border-border pt-4">
+                <h4 className="text-sm font-medium text-foreground">Disable 2FA</h4>
                 <div className="space-y-2">
                   <Label htmlFor="disable-password">Enter password to disable</Label>
                   <Input
@@ -318,26 +447,24 @@ export default function SettingsPage() {
                     required
                   />
                 </div>
-                {disableError && <p className="text-sm text-red-400">{disableError}</p>}
+                {disableError && <p className="text-sm text-destructive">{disableError}</p>}
                 <Button type="submit" variant="destructive" disabled={disableLoading}>
                   {disableLoading ? "Disabling…" : "Disable 2FA"}
                 </Button>
               </form>
             </div>
-          ) : (
-            <div className="space-y-4">
-              {!showTotpSetup ? (
+          : <div className="space-y-4">
+              {!showTotpSetup ?
                 <div>
-                  <p className="text-sm text-zinc-400 mb-3">
+                  <p className="mb-3 text-sm text-muted-foreground">
                     Two-factor authentication is currently disabled. Enable it to require a 6-digit verification code from apps like Google Authenticator or Authy when logging in.
                   </p>
                   <Button onClick={handleSetupTotp} disabled={setupLoading}>
-                    {setupLoading ? "Loading setup..." : "Setup 2FA"}
+                    {setupLoading ? "Loading setup…" : "Setup 2FA"}
                   </Button>
                 </div>
-              ) : (
-                <div className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-900/30 p-4">
-                  <h4 className="text-sm font-semibold text-zinc-100">Setup two-factor authentication</h4>
+              : <div className="space-y-4 rounded-lg border border-border bg-card p-4">
+                  <h4 className="text-sm font-semibold text-foreground">Setup two-factor authentication</h4>
                   
                   <div className="flex flex-col items-center gap-3">
                     {totpQrDataUrl && (
@@ -349,17 +476,17 @@ export default function SettingsPage() {
                         height={200}
                       />
                     )}
-                    <p className="text-xs text-zinc-400 text-center">
+                    <p className="text-center text-xs text-muted-foreground">
                       Scan the QR code, or manually enter the key below into your authenticator app:
                     </p>
-                    <code className="bg-zinc-950 px-3 py-1.5 rounded font-mono text-sm tracking-wider select-all text-zinc-300">
+                    <code className="rounded bg-input px-3 py-1.5 font-mono text-sm tracking-wider text-foreground select-all">
                       {totpSecret}
                     </code>
                   </div>
 
-                  <form onSubmit={handleVerifyTotp} className="space-y-3 pt-2 border-t border-zinc-800">
+                  <form onSubmit={handleVerifyTotp} className="space-y-3 border-t border-border pt-4">
                     <div className="space-y-1">
-                      <Label htmlFor="totp-code">Verification Code</Label>
+                      <Label htmlFor="totp-code">Verification code</Label>
                       <Input
                         id="totp-code"
                         value={totpCode}
@@ -370,18 +497,18 @@ export default function SettingsPage() {
                         className="font-mono text-center tracking-widest text-lg"
                       />
                     </div>
-                    {totpVerifyError && <p className="text-sm text-red-400">{totpVerifyError}</p>}
+                    {totpVerifyError && <p className="text-sm text-destructive">{totpVerifyError}</p>}
                     <div className="flex gap-2">
-                      <Button type="submit">Verify and Enable</Button>
+                      <Button type="submit">Verify and enable</Button>
                       <Button type="button" variant="outline" onClick={() => setShowTotpSetup(false)}>
                         Cancel
                       </Button>
                     </div>
                   </form>
                 </div>
-              )}
+              }
             </div>
-          )}
+          }
         </CardContent>
       </Card>
     </div>

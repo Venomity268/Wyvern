@@ -1,9 +1,11 @@
 "use client";
 
-import { Monitor, Terminal, MoreHorizontal, Pin } from "lucide-react";
+import { Monitor, Terminal, MoreHorizontal, Pin, Plug } from "lucide-react";
 import type { ConnectionProtocol } from "@/lib/protocols";
 import type { HostMetricsSummary } from "@/lib/host-info/summary";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/layout/EmptyState";
 import { cn } from "@/lib/utils";
 import { WakeConnectButton } from "@/components/WakeConnectButton";
 import { HostMetricsCardSummary } from "@/components/host-metrics/HostMetricsCardSummary";
@@ -53,26 +55,11 @@ interface ConnectionListProps {
 
 const PROTOCOL_STYLE: Record<
   ConnectionProtocol,
-  { icon: typeof Terminal; color: string; ring: string; bg: string }
+  { icon: typeof Terminal; badge: "ssh" | "vnc" | "rdp"; ring: string }
 > = {
-  ssh: {
-    icon: Terminal,
-    color: "text-emerald-400",
-    ring: "ring-emerald-500/20",
-    bg: "bg-emerald-500/10",
-  },
-  vnc: {
-    icon: Monitor,
-    color: "text-sky-400",
-    ring: "ring-sky-500/20",
-    bg: "bg-sky-500/10",
-  },
-  rdp: {
-    icon: Monitor,
-    color: "text-violet-400",
-    ring: "ring-violet-500/20",
-    bg: "bg-violet-500/10",
-  },
+  ssh: { icon: Terminal, badge: "ssh", ring: "ring-emerald-500/20" },
+  vnc: { icon: Monitor, badge: "vnc", ring: "ring-sky-500/20" },
+  rdp: { icon: Monitor, badge: "rdp", ring: "ring-violet-500/20" },
 };
 
 function sessionHref(connectionId: string, protocol: ConnectionProtocol) {
@@ -105,40 +92,63 @@ function ConnectionCard({
       conn.methods
     : [{ protocol: conn.protocol, port: conn.port }];
 
+  const primaryProtocol = methods[0]?.protocol ?? conn.protocol;
+  const style = PROTOCOL_STYLE[primaryProtocol];
+  const Icon = style.icon;
   const target = `${conn.username ? `${conn.username}@` : ""}${conn.hostname}`;
   const hasMove = onMove && workspaces.some((w) => w.id !== conn.workspace_id);
   const hasDuplicate = onDuplicate && workspaces.length > 0;
   const hasSsh = methods.some((m) => m.protocol === "ssh");
 
   return (
-    <article className="flex flex-col rounded-xl border border-border bg-card transition-colors hover:border-zinc-600">
-      <div className="flex gap-3 p-4 pb-2">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-800 ring-1 ring-zinc-700">
-          <Monitor className="h-4 w-4 text-zinc-400" />
+    <article className="flex flex-col rounded-lg border border-border bg-card transition-colors hover:border-primary/20 hover:bg-card-hover">
+      <div className="flex gap-3 p-4 pb-3">
+        <div
+          className={cn(
+            "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ring-1",
+            style.ring,
+            "bg-accent",
+          )}
+        >
+          <Icon className="h-4 w-4 text-foreground" />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="font-medium leading-snug text-foreground">{conn.name}</h3>
-          <p className="mt-1 break-all font-mono text-xs text-muted">{target}</p>
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="font-medium leading-snug text-foreground">{conn.name}</h3>
+            {onTogglePin && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "h-8 w-8 shrink-0",
+                  pinned ? "text-amber-400" : "text-muted-foreground",
+                )}
+                title={pinned ? "Unpin from home" : "Pin to home"}
+                onClick={() => void onTogglePin(conn.id)}
+              >
+                <Pin className={cn("h-4 w-4", pinned && "fill-current")} />
+              </Button>
+            )}
+          </div>
+          <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{target}</p>
+          {conn.tags && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {conn.tags.split(",").map((tag) => (
+                <Badge key={tag.trim()} variant="outline" className="text-[10px]">
+                  #{tag.trim()}
+                </Badge>
+              ))}
+            </div>
+          )}
           {conn.mac_address && (
-            <p className="mt-1 font-mono text-[10px] text-zinc-600">WoL {conn.mac_address}</p>
+            <p className="mt-1 font-mono text-[10px] text-muted-foreground">WoL {conn.mac_address}</p>
           )}
         </div>
-        {onTogglePin && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className={`h-8 w-8 shrink-0 p-0 ${pinned ? "text-amber-400" : "text-zinc-500"}`}
-            title={pinned ? "Unpin from home" : "Pin to home"}
-            onClick={() => void onTogglePin(conn.id)}
-          >
-            {pinned ? <Pin className="h-4 w-4 fill-current" /> : <Pin className="h-4 w-4" />}
-          </Button>
-        )}
       </div>
 
       <div className="flex flex-wrap gap-2 px-4 pb-3">
         {methods.map((m) => {
-          const style = PROTOCOL_STYLE[m.protocol];
+          const methodStyle = PROTOCOL_STYLE[m.protocol];
           return (
             <WakeConnectButton
               key={m.protocol}
@@ -146,8 +156,8 @@ function ConnectionCard({
               protocol={m.protocol}
               connectionId={conn.id}
               macAddress={conn.mac_address}
-              label={`${m.protocol.toUpperCase()} :${m.port}`}
-              className={cn("gap-1.5 border-zinc-700", style.color)}
+              label={`Connect ${m.protocol.toUpperCase()}`}
+              className={cn("gap-1.5", methodStyle.badge === "ssh" && "border-emerald-500/30 text-emerald-400")}
             />
           );
         })}
@@ -174,9 +184,9 @@ function ConnectionCard({
           )}
           {(hasMove || hasDuplicate) && (
             <div className="relative min-w-0 flex-1">
-              <MoreHorizontal className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500" />
+              <MoreHorizontal className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <select
-                className="h-8 w-full rounded-md border border-zinc-700 bg-zinc-900 pl-7 pr-2 text-xs text-zinc-300"
+                className="h-8 w-full rounded-md border border-border bg-input pl-7 pr-2 text-xs text-foreground"
                 defaultValue=""
                 onChange={async (e) => {
                   const value = e.target.value;
@@ -230,9 +240,11 @@ export function ConnectionList({
 }: ConnectionListProps) {
   if (connections.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-border bg-card px-4 py-8 text-center text-sm text-muted">
-        No connections yet.
-      </p>
+      <EmptyState
+        icon={<Plug className="h-5 w-5" />}
+        title="No connections yet"
+        description="Add a connection to get started."
+      />
     );
   }
 

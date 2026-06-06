@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 interface UserRow {
   id: string;
@@ -60,15 +62,15 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold">User Management</h1>
-        <p className="text-zinc-500">Create and manage user accounts.</p>
-      </div>
+    <div className="mx-auto max-w-4xl space-y-8">
+      <PageHeader
+        title="User management"
+        description="Create and manage user accounts."
+      />
 
       <Card>
         <CardHeader>
-          <CardTitle>Create User</CardTitle>
+          <CardTitle>Create user</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={createUser} className="grid gap-4 sm:grid-cols-3">
@@ -86,16 +88,16 @@ export default function AdminUsersPage() {
                 id="role"
                 value={role}
                 onChange={(e) => setRole(e.target.value as "user" | "admin")}
-                className="flex h-9 w-full rounded-md border border-zinc-300 bg-transparent px-3 text-sm dark:border-zinc-700"
+                className="flex h-9 w-full rounded-md border border-border bg-input px-3 text-sm text-foreground"
               >
                 <option value="user">User</option>
                 <option value="admin">Admin</option>
               </select>
             </div>
-            {error && <p className="text-sm text-red-600 sm:col-span-3">{error}</p>}
+            {error && <p className="text-sm text-destructive sm:col-span-3">{error}</p>}
             <div className="sm:col-span-3">
               <Button type="submit" disabled={loading}>
-                {loading ? "Creating..." : "Create User"}
+                {loading ? "Creating…" : "Create user"}
               </Button>
             </div>
           </form>
@@ -109,18 +111,22 @@ export default function AdminUsersPage() {
         <CardContent>
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-left text-zinc-500">
-                <th className="pb-2 pr-4">Email</th>
-                <th className="pb-2 pr-4">Role</th>
-                <th className="pb-2">Created</th>
+              <tr className="border-b border-border text-left text-muted-foreground">
+                <th className="pb-2 pr-4 font-medium">Email</th>
+                <th className="pb-2 pr-4 font-medium">Role</th>
+                <th className="pb-2 font-medium">Created</th>
               </tr>
             </thead>
             <tbody>
               {users.map((u) => (
-                <tr key={u.id} className="border-b border-zinc-100 dark:border-zinc-800">
-                  <td className="py-2 pr-4">{u.email}</td>
-                  <td className="py-2 pr-4 capitalize">{u.role}</td>
-                  <td className="py-2">{new Date(u.created_at + "Z").toLocaleString()}</td>
+                <tr key={u.id} className="border-b border-border">
+                  <td className="py-2.5 pr-4 text-foreground">{u.email}</td>
+                  <td className="py-2.5 pr-4">
+                    <Badge variant={u.role === "admin" ? "warning" : "secondary"}>{u.role}</Badge>
+                  </td>
+                  <td className="py-2.5 text-muted-foreground">
+                    {new Date(u.created_at + "Z").toLocaleString()}
+                  </td>
                 </tr>
               ))}
             </tbody>

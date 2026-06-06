@@ -107,7 +107,7 @@ app.prepare().then(() => {
   });
 
   server.listen(port, hostname, () => {
-    console.log(`> wterm-bastion ready on http://${hostname}:${port}`);
+    console.log(`> Wyvern ready on http://${hostname}:${port}`);
     console.log(`> guacd at ${getGuacdOptions().host}:${getGuacdOptions().port}`);
   });
 });

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession, requireSession } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/index";
+import { avatarUrlForUser } from "@/lib/auth/avatar";
 
 function profileFromDb(userId: string) {
   return getDb()
     .prepare(
-      "SELECT id, email, role, display_name, created_at, totp_enabled FROM users WHERE id = ?",
+      "SELECT id, email, role, display_name, created_at, totp_enabled, avatar_updated_at FROM users WHERE id = ?",
     )
     .get(userId) as
     | {
@@ -15,8 +16,21 @@ function profileFromDb(userId: string) {
         display_name: string | null;
         created_at: string;
         totp_enabled: number;
+        avatar_updated_at: string | null;
       }
     | undefined;
+}
+
+function serializeProfile(profile: NonNullable<ReturnType<typeof profileFromDb>>) {
+  return {
+    id: profile.id,
+    email: profile.email,
+    role: profile.role,
+    displayName: profile.display_name,
+    createdAt: profile.created_at,
+    totpEnabled: profile.totp_enabled === 1,
+    avatarUrl: avatarUrlForUser(profile.id, profile.avatar_updated_at),
+  };
 }
 
 export async function GET() {
@@ -30,16 +44,7 @@ export async function GET() {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json({
-    user: {
-      id: profile.id,
-      email: profile.email,
-      role: profile.role,
-      displayName: profile.display_name,
-      createdAt: profile.created_at,
-      totpEnabled: profile.totp_enabled === 1,
-    },
-  });
+  return NextResponse.json({ user: serializeProfile(profile) });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -59,9 +64,11 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  getDb()
-    .prepare("UPDATE users SET display_name = ? WHERE id = ?")
-    .run(displayName ?? null, sessionUser.id);
+  if (displayName !== undefined) {
+    getDb()
+      .prepare("UPDATE users SET display_name = ? WHERE id = ?")
+      .run(displayName, sessionUser.id);
+  }
 
   const profile = profileFromDb(sessionUser.id)!;
 
@@ -74,14 +81,5 @@ export async function PATCH(request: NextRequest) {
   };
   await session.save();
 
-  return NextResponse.json({
-    user: {
-      id: profile.id,
-      email: profile.email,
-      role: profile.role,
-      displayName: profile.display_name,
-      createdAt: profile.created_at,
-      totpEnabled: profile.totp_enabled === 1,
-    },
-  });
+  return NextResponse.json({ user: serializeProfile(profile) });
 }

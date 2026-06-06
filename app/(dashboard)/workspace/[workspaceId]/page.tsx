@@ -3,10 +3,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ConnectionList, ConnectionItem } from "@/components/ConnectionList";
-import { ConnectionForm, CredentialForm, ConnectionFormData } from "@/components/ConnectionForm";
+import { ConnectionForm, ConnectionFormData } from "@/components/ConnectionForm";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { WorkspaceFilters } from "@/components/workspace/WorkspaceFilters";
+import { WorkspaceSettingsPanel } from "@/components/workspace/WorkspaceSettingsPanel";
+import { CredentialsSection } from "@/components/workspace/CredentialsSection";
+import {
+  getFolderDescendants,
+  getFolderPath,
+  type FolderOption,
+} from "@/components/workspace/FolderTree";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 
 interface WorkspaceInfo {
   id: string;
@@ -27,14 +36,6 @@ interface CredentialItem {
   has_password?: number | boolean;
   has_private_key?: number | boolean;
   has_passphrase?: number | boolean;
-}
-
-interface FolderOption {
-  id: string;
-  workspace_id: string;
-  name: string;
-  parent_id: string | null;
-  created_at: string;
 }
 
 export default function WorkspacePage() {
@@ -329,82 +330,12 @@ export default function WorkspacePage() {
     await load();
   }
 
-  function getFolderPath(fid: string | null, list: FolderOption[]): string {
-    if (!fid) return "";
-    const f = list.find((item) => item.id === fid);
-    if (!f) return "";
-    const parentPath = getFolderPath(f.parent_id, list);
-    return parentPath ? `${parentPath} / ${f.name}` : f.name;
-  }
-
-  function renderFolderTree(parentId: string | null, depth: number): React.ReactNode[] {
-    const list = folders.filter((f) => f.parent_id === parentId);
-    return list.map((f) => {
-      const isSelected = selectedFolderId === f.id;
-      return (
-        <div key={f.id} className="space-y-1">
-          <div
-            className={`group flex items-center justify-between rounded px-2 py-1 text-sm ${
-              isSelected
-                ? "bg-zinc-800 text-zinc-100 font-medium"
-                : "text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200"
-            }`}
-            style={{ paddingLeft: `${Math.max(8, depth * 16)}px` }}
-          >
-            <button
-              onClick={() => setSelectedFolderId(f.id)}
-              className="flex flex-1 items-center gap-2 text-left truncate min-w-0"
-            >
-              <span>📁</span>
-              <span className="truncate text-xs md:text-sm">{f.name}</span>
-            </button>
-            <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCreatingFolderParentId(f.id);
-                  setIsCreatingFolder(true);
-                }}
-                title="Add Subfolder"
-                className="text-xs text-zinc-500 hover:text-zinc-300 p-0.5"
-              >
-                ➕
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEditingFolderId(f.id);
-                  setEditingFolderName(f.name);
-                }}
-                title="Rename Folder"
-                className="text-xs text-zinc-500 hover:text-zinc-300 p-0.5"
-              >
-                ✏️
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void handleDeleteFolder(f.id);
-                }}
-                title="Delete Folder"
-                className="text-xs text-red-500 hover:text-red-400 p-0.5"
-              >
-                🗑️
-              </button>
-            </div>
-          </div>
-          {renderFolderTree(f.id, depth + 1)}
-        </div>
-      );
-    });
-  }
-
   if (error) {
-    return <p className="text-red-400">{error}</p>;
+    return <p className="text-destructive">{error}</p>;
   }
 
   if (!workspace) {
-    return <p className="text-muted">Loading…</p>;
+    return <p className="text-muted-foreground">Loading…</p>;
   }
 
   const editingConn = editingId ? connections.find((c) => c.id === editingId) : undefined;
@@ -415,21 +346,11 @@ export default function WorkspacePage() {
       connections
         .map((c) => c.tags)
         .filter(Boolean)
-        .flatMap((t) => t!.split(",").map((s) => s.trim()))
-    )
+        .flatMap((t) => t!.split(",").map((s) => s.trim())),
+    ),
   ).sort();
 
-  function getFolderDescendants(folderId: string, folderList: FolderOption[]): string[] {
-    const ids = [folderId];
-    const children = folderList.filter((f) => f.parent_id === folderId);
-    for (const child of children) {
-      ids.push(...getFolderDescendants(child.id, folderList));
-    }
-    return ids;
-  }
-
   const filteredConnections = connections.filter((c) => {
-    // 1. Folder filter
     if (selectedFolderId === "unassigned") {
       if (c.folder_id !== null && c.folder_id !== undefined) return false;
     } else if (selectedFolderId !== null) {
@@ -437,13 +358,11 @@ export default function WorkspacePage() {
       if (!c.folder_id || !allowedFolderIds.includes(c.folder_id)) return false;
     }
 
-    // 2. Tag filter
     if (selectedTag) {
       const connTags = c.tags ? c.tags.split(",").map((t) => t.trim()) : [];
       if (!connTags.includes(selectedTag)) return false;
     }
 
-    // 3. Search query filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       const matchName = c.name.toLowerCase().includes(query);
@@ -456,228 +375,119 @@ export default function WorkspacePage() {
     return true;
   });
 
+  const hasActiveFilters =
+    selectedFolderId !== null || selectedTag !== null || searchQuery !== "";
+
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">{workspace.name}</h1>
-          <p className="text-sm text-zinc-400">
-            {workspace.is_personal
-              ? "Your personal connections and credentials."
-              : "Team workspace — shared connections and credentials."}
-          </p>
-        </div>
-        {!workspace.is_personal && (
-          <Button variant="outline" size="sm" onClick={() => setSettingsOpen((v) => !v)}>
-            Workspace settings
-          </Button>
-        )}
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title={workspace.name}
+        description={
+          workspace.is_personal ?
+            "Your personal connections and credentials."
+          : "Team workspace — shared connections and credentials."
+        }
+        actions={
+          !workspace.is_personal ?
+            <Button variant="outline" size="sm" onClick={() => setSettingsOpen((v) => !v)}>
+              Workspace settings
+            </Button>
+          : undefined
+        }
+      />
 
       {settingsOpen && !workspace.is_personal && (
-        <section className="space-y-4 rounded-lg border border-border bg-card p-4">
-          <form onSubmit={saveRename} className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1">
-              <Label>Workspace name</Label>
-              <Input value={rename} onChange={(e) => setRename(e.target.value)} required />
-            </div>
-            <Button type="submit" size="sm">
-              Save name
-            </Button>
-          </form>
-
-          <div>
-            <h3 className="mb-2 text-sm font-medium">Members</h3>
-            <ul className="mb-3 space-y-1">
-              {members.map((m) => (
-                <li
-                  key={m.user_id}
-                  className="flex items-center justify-between gap-3 rounded border border-zinc-800 px-3 py-2 text-sm min-w-0"
-                >
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="truncate" title={m.email}>{m.email}</span>
-                    <span className="text-zinc-500 shrink-0">({m.role})</span>
-                  </div>
-                  {m.role !== "owner" && (
-                    <Button size="sm" variant="ghost" className="shrink-0" onClick={() => removeMember(m.user_id)}>
-                      Remove
-                    </Button>
-                  )}
-                </li>
-              ))}
-            </ul>
-            <form onSubmit={inviteMember} className="flex flex-wrap gap-2">
-              <Input
-                type="email"
-                placeholder="Invite by email"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                required
-                className="max-w-xs"
-              />
-              <Button type="submit" size="sm">
-                Invite
-              </Button>
-            </form>
-          </div>
-        </section>
+        <WorkspaceSettingsPanel
+          rename={rename}
+          onRenameChange={setRename}
+          onSaveRename={saveRename}
+          members={members}
+          inviteEmail={inviteEmail}
+          onInviteEmailChange={setInviteEmail}
+          onInviteMember={inviteMember}
+          onRemoveMember={removeMember}
+        />
       )}
 
-      {/* Main Grid View */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-start">
-        {/* Left column / Sidebar */}
-        <div className="space-y-6 md:col-span-1">
-          {/* Folders block */}
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-sm text-zinc-200">Folders</h3>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 px-2 text-xs"
-                onClick={() => {
-                  setCreatingFolderParentId(null);
-                  setIsCreatingFolder(true);
-                }}
-              >
-                + New
-              </Button>
-            </div>
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+        <WorkspaceFilters
+          folders={folders}
+          allTags={allTags}
+          selectedFolderId={selectedFolderId}
+          selectedTag={selectedTag}
+          onSelectFolder={setSelectedFolderId}
+          onSelectTag={setSelectedTag}
+          isCreatingFolder={isCreatingFolder}
+          creatingFolderParentId={creatingFolderParentId}
+          newFolderName={newFolderName}
+          onNewFolderNameChange={setNewFolderName}
+          onStartCreateFolder={(parentId) => {
+            setCreatingFolderParentId(parentId);
+            setIsCreatingFolder(true);
+          }}
+          onCreateFolder={() => void handleCreateFolder()}
+          onCancelCreateFolder={() => {
+            setIsCreatingFolder(false);
+            setNewFolderName("");
+          }}
+          editingFolderId={editingFolderId}
+          editingFolderName={editingFolderName}
+          onEditingFolderNameChange={setEditingFolderName}
+          onStartEditFolder={(id, name) => {
+            setEditingFolderId(id);
+            setEditingFolderName(name);
+          }}
+          onRenameFolder={() => void handleRenameFolder()}
+          onCancelEditFolder={() => {
+            setEditingFolderId(null);
+            setEditingFolderName("");
+          }}
+          onDeleteFolder={(id) => void handleDeleteFolder(id)}
+        />
 
-            {/* Folder creation inline form */}
-            {isCreatingFolder && (
-              <div className="rounded border border-zinc-800 bg-zinc-950 p-2 space-y-2">
-                <span className="text-xs text-zinc-400 block font-medium">
-                  {creatingFolderParentId ? "New subfolder" : "New folder"}
-                </span>
-                <Input
-                  className="h-8 text-xs bg-zinc-900 border-zinc-800 text-zinc-100"
-                  value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
-                  placeholder="Folder name"
-                  autoFocus
-                />
-                <div className="flex gap-1 justify-end">
-                  <Button size="sm" className="h-6 text-xs px-2" onClick={handleCreateFolder}>Create</Button>
-                  <Button size="sm" variant="ghost" className="h-6 text-xs px-2 text-zinc-400" onClick={() => { setIsCreatingFolder(false); setNewFolderName(""); }}>Cancel</Button>
-                </div>
-              </div>
-            )}
-
-            {/* Folder renaming inline form */}
-            {editingFolderId && (
-              <div className="rounded border border-zinc-800 bg-zinc-950 p-2 space-y-2">
-                <span className="text-xs text-zinc-400 block font-medium">Rename folder</span>
-                <Input
-                  className="h-8 text-xs bg-zinc-900 border-zinc-800 text-zinc-100"
-                  value={editingFolderName}
-                  onChange={(e) => setEditingFolderName(e.target.value)}
-                  placeholder="Folder name"
-                  autoFocus
-                />
-                <div className="flex gap-1 justify-end">
-                  <Button size="sm" className="h-6 text-xs px-2" onClick={handleRenameFolder}>Save</Button>
-                  <Button size="sm" variant="ghost" className="h-6 text-xs px-2 text-zinc-400" onClick={() => { setEditingFolderId(null); setEditingFolderName(""); }}>Cancel</Button>
-                </div>
-              </div>
-            )}
-
-            {/* Folder rows */}
-            <div className="space-y-1 max-h-[300px] overflow-y-auto pr-1">
-              <button
-                onClick={() => setSelectedFolderId(null)}
-                className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs md:text-sm transition-colors ${
-                  selectedFolderId === null ? "bg-zinc-800 text-zinc-100 font-medium" : "text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200"
-                }`}
-              >
-                📁 <span>All Connections</span>
-              </button>
-              <button
-                onClick={() => setSelectedFolderId("unassigned")}
-                className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs md:text-sm transition-colors ${
-                  selectedFolderId === "unassigned" ? "bg-zinc-800 text-zinc-100 font-medium" : "text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200"
-                }`}
-              >
-                📁 <span>Unassigned</span>
-              </button>
-
-              <div className="mt-2 space-y-1">
-                {renderFolderTree(null, 0)}
-              </div>
-            </div>
-          </div>
-
-          {/* Tags list block */}
-          {allTags.length > 0 && (
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 space-y-3">
-              <h3 className="font-semibold text-sm text-zinc-200">Tags</h3>
-              <div className="flex flex-wrap gap-1.5 max-h-[200px] overflow-y-auto pr-1">
-                {allTags.map((tag) => (
-                  <button
-                    key={tag}
-                    onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
-                    className={`rounded-full px-2.5 py-0.5 text-xs border transition-colors ${
-                      selectedTag === tag
-                        ? "bg-zinc-200 text-zinc-900 border-zinc-200"
-                        : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-700 hover:text-zinc-200"
-                    }`}
-                  >
-                    #{tag}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right column / Connections and Credentials */}
-        <div className="md:col-span-3 space-y-8">
-          {/* Connections section */}
+        <div className="min-w-0 flex-1 space-y-8">
           <section className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold flex flex-wrap items-center gap-2">
-                  <span>Connections</span>
-                  {selectedFolderId && selectedFolderId !== "unassigned" && (
-                    <span className="text-xs bg-zinc-800 px-2 py-0.5 text-zinc-400 rounded-md font-mono font-normal">
-                      Folder: {getFolderPath(selectedFolderId, folders)}
-                    </span>
-                  )}
-                  {selectedFolderId === "unassigned" && (
-                    <span className="text-xs bg-zinc-800 px-2 py-0.5 text-zinc-400 rounded-md font-mono font-normal">
-                      Unassigned
-                    </span>
-                  )}
-                  {selectedTag && (
-                    <span className="text-xs bg-zinc-800 px-2 py-0.5 text-zinc-400 rounded-md font-mono font-normal">
-                      #{selectedTag}
-                    </span>
-                  )}
-                </h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-semibold text-foreground">Connections</h2>
+                {selectedFolderId && selectedFolderId !== "unassigned" && (
+                  <Badge variant="secondary" className="font-mono font-normal">
+                    {getFolderPath(selectedFolderId, folders)}
+                  </Badge>
+                )}
+                {selectedFolderId === "unassigned" && (
+                  <Badge variant="secondary" className="font-mono font-normal">
+                    Unassigned
+                  </Badge>
+                )}
+                {selectedTag && (
+                  <Badge variant="secondary" className="font-mono font-normal">
+                    #{selectedTag}
+                  </Badge>
+                )}
               </div>
               <Button onClick={() => { setShowConnForm(true); setEditingId(null); }}>
-                Add Connection
+                Add connection
               </Button>
             </div>
 
-            {/* Filter controls / Search bar */}
             <div className="flex items-center gap-2">
               <Input
                 type="search"
-                placeholder="Search connections by name, host, user or tags..."
+                placeholder="Search by name, host, user, or tags…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-zinc-900 border-zinc-800 placeholder-zinc-500 text-zinc-100"
+                className="flex-1"
               />
-              {(selectedFolderId !== null || selectedTag !== null || searchQuery !== "") && (
+              {hasActiveFilters && (
                 <Button
                   variant="ghost"
+                  size="sm"
                   onClick={() => {
                     setSelectedFolderId(null);
                     setSelectedTag(null);
                     setSearchQuery("");
                   }}
-                  className="text-xs text-zinc-500 hover:text-zinc-300"
                 >
                   Clear
                 </Button>
@@ -691,17 +501,15 @@ export default function WorkspacePage() {
                 credentials={credentials}
                 folders={folders}
                 initial={
-                  editingConn
-                    ? {
-                        ...editingConn,
-                        methods: editingConn.methods,
-                      }
-                    : undefined
+                  editingConn ?
+                    { ...editingConn, methods: editingConn.methods }
+                  : undefined
                 }
                 onSubmit={saveConnection}
                 onCancel={() => { setShowConnForm(false); setEditingId(null); }}
               />
             )}
+
             <ConnectionList
               connections={filteredConnections}
               editable
@@ -715,71 +523,16 @@ export default function WorkspacePage() {
             />
           </section>
 
-          {/* Credentials section */}
-          <section className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Credentials</h2>
-              <Button variant="outline" onClick={() => { setShowCredForm(true); setEditingCredId(null); }}>
-                Add Credential
-              </Button>
-            </div>
-            {showCredForm && (
-              <CredentialForm
-                initial={
-                  editingCred
-                    ? { id: editingCred.id, label: editingCred.label, username: editingCred.username || "" }
-                    : undefined
-                }
-                hasExistingPassword={!!editingCred?.has_password}
-                hasExistingPrivateKey={!!editingCred?.has_private_key}
-                hasExistingPassphrase={!!editingCred?.has_passphrase}
-                onSubmit={saveCredential}
-                onCancel={() => { setShowCredForm(false); setEditingCredId(null); }}
-              />
-            )}
-            {credentials.length > 0 ? (
-              <ul className="space-y-2">
-                {credentials.map((c) => (
-                  <li
-                    key={c.id}
-                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3"
-                  >
-                    <div className="min-w-0">
-                      <span className="font-medium text-zinc-100 truncate block sm:inline">{c.label}</span>
-                      {c.username && (
-                        <span className="sm:ml-2 text-sm text-zinc-500 block sm:inline">({c.username})</span>
-                      )}
-                      <span className="sm:ml-2 text-xs text-zinc-600 block sm:inline mt-0.5 sm:mt-0">
-                        {c.has_password ? "password" : ""}
-                        {c.has_password && c.has_private_key ? " · " : ""}
-                        {c.has_private_key ? "key" : ""}
-                      </span>
-                    </div>
-                    <div className="flex gap-2 sm:justify-end w-full sm:w-auto shrink-0 border-t border-zinc-800/40 sm:border-0 pt-2 sm:pt-0">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 sm:flex-initial"
-                        onClick={() => { setEditingCredId(c.id); setShowCredForm(true); }}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        className="flex-1 sm:flex-initial"
-                        onClick={() => deleteCredential(c.id)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-zinc-500">No credentials stored yet.</p>
-            )}
-          </section>
+          <CredentialsSection
+            credentials={credentials}
+            showCredForm={showCredForm}
+            editingCred={editingCred}
+            onShowForm={() => { setShowCredForm(true); setEditingCredId(null); }}
+            onEdit={(id) => { setEditingCredId(id); setShowCredForm(true); }}
+            onDelete={deleteCredential}
+            onSubmit={saveCredential}
+            onCancel={() => { setShowCredForm(false); setEditingCredId(null); }}
+          />
         </div>
       </div>
     </div>

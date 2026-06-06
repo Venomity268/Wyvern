@@ -30,9 +30,9 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["better-sqlite3", "ssh2"],
   transpilePackages: ["@wterm/dom", "@wterm/react", "@wterm/ghostty"],
   allowedDevOrigins: [
-    "wterm-bastion.cain",
+    "wyvern.cain",
     "*.cain",
-    "wterm-bastion.localhost",
+    "wyvern.localhost",
     "*.localhost",
     "192.*.*.*",
     // Tailscale CGNAT (100.64.0.0/10) when accessing via http://100.x.x.x:port

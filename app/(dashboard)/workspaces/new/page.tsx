@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 export default function NewWorkspacePage() {
   const router = useRouter();
@@ -33,10 +34,14 @@ export default function NewWorkspacePage() {
   }
 
   return (
-    <div className="mx-auto max-w-md">
+    <div className="mx-auto max-w-md space-y-6">
+      <PageHeader
+        title="Create workspace"
+        description="Organize team connections and shared credentials."
+      />
       <Card>
         <CardHeader>
-          <CardTitle>Create workspace</CardTitle>
+          <CardTitle>New workspace</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -50,7 +55,7 @@ export default function NewWorkspacePage() {
                 required
               />
             </div>
-            {error && <p className="text-sm text-red-400">{error}</p>}
+            {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" disabled={loading}>
               {loading ? "Creating…" : "Create workspace"}
             </Button>

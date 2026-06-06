@@ -340,7 +340,7 @@ export function ConnectionForm({
                         >
                           <option value="">None — prompt at connect</option>
                           {p === "ssh" && (
-                            <option value="__bastion__">Bastion SSH Key</option>
+                            <option value="__bastion__">Wyvern SSH key</option>
                           )}
                           {credentials.map((c) => (
                             <option key={c.id} value={c.id}>
@@ -412,16 +412,16 @@ export function ConnectionForm({
           {initial?.id && enabled.ssh && (
             <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
               <div>
-                <Label>Bastion SSH Key Deployment</Label>
+                <Label>Wyvern SSH key deployment</Label>
                 <p className="mt-1 text-xs text-zinc-500">
-                  Deploy this bastion's SSH public key to the remote server's <code>authorized_keys</code> to allow secure passwordless authentication.
+                  Deploy this server&apos;s SSH public key to the remote server&apos;s <code>authorized_keys</code> to allow secure passwordless authentication.
                 </p>
               </div>
 
               {bastionPubKey && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-zinc-400">Bastion Public Key</span>
+                    <span className="text-[10px] text-zinc-400">Wyvern public key</span>
                     <Button
                       type="button"
                       variant="ghost"

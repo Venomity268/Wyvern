@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "wterm Bastion",
-  description: "Self-hosted SSH and VNC manager with team workspaces",
+  title: "Wyvern",
+  description: "Self-hosted SSH, VNC, and RDP manager with team workspaces",
 };
 
 export default function RootLayout({

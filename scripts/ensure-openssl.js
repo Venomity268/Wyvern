@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const PORTLESS_CLI = path.join(__dirname, "..", "node_modules", "portless", "dist", "cli.js");
-const PORTLESS_APP = "wterm-bastion";
+const PORTLESS_APP = "wyvern";
 const PORTLESS_TLD = "cain";
 const HOSTS_PATH =
   process.platform === "win32"

@@ -1,4 +1,4 @@
-# wterm Bastion
+# Wyvern
 
 Self-hosted web SSH and VNC manager. Every user gets a **personal workspace** for their own connections; admins curate a **shared workspace** for team-wide hosts.
 
@@ -34,11 +34,11 @@ npm run setup:portless
 npm run start:dev
 ```
 
-Open **https://wterm-bastion.cain** on this machine and sign in with the seeded admin account (defaults in `.env.example`).
+Open **https://wyvern.cain** on this machine and sign in with the seeded admin account (defaults in `.env.example`).
 
-**Windows hosts file:** `.cain` does not resolve automatically. `npm run setup:portless` and `npm run start:dev` add `127.0.0.1 wterm-bastion.cain` to your hosts file — **run both in an elevated (Administrator) PowerShell** the first time. If the browser still cannot connect, run `npm run sync:hosts` as Administrator.
+**Windows hosts file:** `.cain` does not resolve automatically. `npm run setup:portless` and `npm run start:dev` add `127.0.0.1 wyvern.cain` to your hosts file — **run both in an elevated (Administrator) PowerShell** the first time. If the browser still cannot connect, run `npm run sync:hosts` as Administrator.
 
-**LAN access:** The app binds to `0.0.0.0` by default (`BASTION_BIND`), so other devices can reach the assigned portless app port (shown in the terminal, e.g. `http://<your-lan-ip>:4352`) once Windows Firewall allows inbound traffic. For HTTPS via portless, use **https://wterm-bastion.cain** with `*.cain` DNS (or a hosts entry on each client) pointing at this machine’s LAN IP. Other devices must run `npm run setup:portless` once to trust the local CA.
+**LAN access:** The app binds to `0.0.0.0` by default (`BASTION_BIND`), so other devices can reach the assigned portless app port (shown in the terminal, e.g. `http://<your-lan-ip>:4352`) once Windows Firewall allows inbound traffic. For HTTPS via portless, use **https://wyvern.cain** with `*.cain` DNS (or a hosts entry on each client) pointing at this machine’s LAN IP. Other devices must run `npm run setup:portless` once to trust the local CA.
 
 If a previous portless proxy used different settings, stop it first: `npx portless proxy stop`
 
@@ -47,8 +47,8 @@ If a previous portless proxy used different settings, stop it first: `npx portle
 | Command | Description |
 |---------|-------------|
 | `npm run setup:portless` | Trust local CA + sync hosts (requires OpenSSL; **Administrator on Windows**) |
-| `npm run sync:hosts` | Add `wterm-bastion.cain` to hosts file (**Administrator on Windows**) |
-| `npm run start:dev` | Run via [portless](https://portless.sh) at `https://wterm-bastion.cain` |
+| `npm run sync:hosts` | Add `wyvern.cain` to hosts file (**Administrator on Windows**) |
+| `npm run start:dev` | Run via [portless](https://portless.sh) at `https://wyvern.cain` |
 | `npm run dev` | Run custom server directly on `PORT` (default 3000) |
 | `npm run build` | Build Next.js |
 | `npm start` | Production server (`tsx server.ts`) |

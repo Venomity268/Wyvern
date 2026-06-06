@@ -9,9 +9,11 @@ import {
 } from "@/lib/db/index";
 import { ConnectionHistory } from "@/components/ConnectionHistory";
 import { PinnedConnections } from "@/components/PinnedConnections";
+import { PageHeader } from "@/components/layout/PageHeader";
 import type { ConnectionItem } from "@/components/ConnectionList";
 import { attachMethods } from "@/lib/db/connection-methods";
 import { listActiveSessions } from "@/lib/sessions/reconcile";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FolderOpen, Zap } from "lucide-react";
 
@@ -45,27 +47,27 @@ export default async function HomePage() {
 
   const pinnedConnections = attachMethods(pinnedRows) as ConnectionItem[];
 
+  const displayName = "displayName" in user && user.displayName ? user.displayName : user.email.split("@")[0];
+
   return (
-    <div className="space-y-10">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Welcome back</h1>
-        <p className="mt-1 text-sm text-muted">
-          Connect to hosts in your workspaces or use quick connect for one-off sessions.
-        </p>
-        <div className="mt-3">
+    <div className="mx-auto max-w-6xl space-y-10">
+      <PageHeader
+        title={`Welcome back${displayName ? `, ${displayName}` : ""}`}
+        description="Connect to hosts in your workspaces or use quick connect for one-off sessions."
+        actions={
           <Link href="/connect">
-            <Button variant="outline" size="sm">
-              <Zap className="mr-1 h-4 w-4" />
+            <Button size="sm">
+              <Zap className="h-4 w-4" />
               Quick connect
             </Button>
           </Link>
-        </div>
-      </div>
+        }
+      />
 
       <PinnedConnections connections={pinnedConnections} />
 
       <section>
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-4 flex items-center justify-between">
           <h2 className="text-sm font-medium text-foreground">Workspaces</h2>
           <Link href="/workspaces/new">
             <Button variant="ghost" size="sm">
@@ -82,16 +84,20 @@ export default async function HomePage() {
               <Link
                 key={ws.id}
                 href={`/workspace/${ws.id}`}
-                className="rounded-lg border border-border bg-card p-4 transition-colors hover:bg-zinc-800/40"
+                className="group rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/30 hover:bg-card-hover"
               >
                 <div className="flex items-start gap-3">
-                  <FolderOpen className="mt-0.5 h-5 w-5 text-emerald-500" />
-                  <div>
-                    <p className="font-medium text-foreground">{ws.name}</p>
-                    <p className="text-sm text-muted">
-                      {connCount.c} connection{connCount.c === 1 ? "" : "s"}
-                      {ws.is_personal ? " · Personal" : ""}
-                    </p>
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                    <FolderOpen className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-foreground group-hover:text-primary">{ws.name}</p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      <Badge variant="secondary">
+                        {connCount.c} connection{connCount.c === 1 ? "" : "s"}
+                      </Badge>
+                      {ws.is_personal ? <Badge variant="outline">Personal</Badge> : null}
+                    </div>
                   </div>
                 </div>
               </Link>
@@ -100,16 +106,10 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section>
-        <ConnectionHistory
-          activeItems={
-            activeSessions as Parameters<typeof ConnectionHistory>[0]["activeItems"]
-          }
-          recentItems={
-            recentHistory as Parameters<typeof ConnectionHistory>[0]["recentItems"]
-          }
-        />
-      </section>
+      <ConnectionHistory
+        activeItems={activeSessions as Parameters<typeof ConnectionHistory>[0]["activeItems"]}
+        recentItems={recentHistory as Parameters<typeof ConnectionHistory>[0]["recentItems"]}
+      />
     </div>
   );
 }

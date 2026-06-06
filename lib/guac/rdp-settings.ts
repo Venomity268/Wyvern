@@ -1,3 +1,5 @@
+import { APP_SLUG } from "@/lib/brand";
+
 /** Shared Guacamole RDP settings (Windows, xrdp, etc.). */
 
 export function guacRdpConnectionSettings(
@@ -22,7 +24,7 @@ export function guacRdpConnectionSettings(
     "resize-method": "display-update",
     security: "any",
     "ignore-cert": true,
-    "client-name": "wterm-bastion",
+    "client-name": APP_SLUG,
     "enable-wallpaper": false,
     "enable-font-smoothing": true,
     "enable-mouse-hover": true,
