@@ -1,0 +1,28 @@
+services:
+  guacd:
+    image: guacamole/guacd:latest
+    restart: unless-stopped
+
+  bastion:
+    build: .
+    ports:
+      - "3000:3000"
+    depends_on:
+      - guacd
+    environment:
+      SESSION_SECRET: ${SESSION_SECRET}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY}
+      GUAC_TOKEN_SECRET: ${GUAC_TOKEN_SECRET}
+      GUACD_HOST: guacd
+      GUACD_PORT: 4822
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@localhost}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme}
+      HOST: 0.0.0.0
+      PORT: 3000
+      NODE_ENV: production
+    volumes:
+      - bastion-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  bastion-data:

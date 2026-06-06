@@ -1,0 +1,25 @@
+diff --git a/node_modules/guacamole-lite/lib/GuacdClient.js b/node_modules/guacamole-lite/lib/GuacdClient.js
+index b657b37..ad4b8a3 100644
+--- a/node_modules/guacamole-lite/lib/GuacdClient.js
++++ b/node_modules/guacamole-lite/lib/GuacdClient.js
+@@ -51,11 +51,15 @@ class GuacdClient extends EventEmitter {
+             this.close(error);
+         });
+ 
+-        this.activityCheckInterval = setInterval(() => {
+-            if (Date.now() > (this.lastActivity + 10000)) {
+-                this.close(new Error('guacd was inactive for too long'))
+-            }
+-        }, 1000);
++        this.guacdInactivityMs = Number(process.env.GUAC_GUACD_IDLE_MS || 3600000);
++
++        if (this.guacdInactivityMs > 0) {
++            this.activityCheckInterval = setInterval(() => {
++                if (Date.now() > (this.lastActivity + this.guacdInactivityMs)) {
++                    this.close(new Error('guacd was inactive for too long'))
++                }
++            }, 1000);
++        }
+     }
+ 
+     close(error) {
