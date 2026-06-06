@@ -24,6 +24,8 @@ export interface ConnectionItem {
   protocol: ConnectionProtocol;
   methods?: ConnectionMethod[];
   workspace_id?: string;
+  folder_id?: string | null;
+  tags?: string | null;
   username?: string | null;
   credential_id?: string | null;
   mac_address?: string | null;

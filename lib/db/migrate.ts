@@ -15,6 +15,33 @@ export function runMigrations(db: Database.Database) {
   migrateConnectionWake(db);
   migrateConnectionHostInfo(db);
   migrateHostInfoMetrics(db);
+  migrateFolders(db);
+}
+
+function migrateFolders(db: Database.Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS folders (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      parent_id TEXT REFERENCES folders(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_folders_workspace ON folders(workspace_id);
+  `);
+
+  const sql = tableSql(db, "connections");
+  if (sql) {
+    if (!sql.includes("folder_id")) {
+      db.exec("ALTER TABLE connections ADD COLUMN folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL");
+    }
+    if (!sql.includes("tags")) {
+      db.exec("ALTER TABLE connections ADD COLUMN tags TEXT");
+    }
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_connections_folder ON connections(folder_id);
+  `);
 }
 
 function migrateQuickSessions(db: Database.Database) {

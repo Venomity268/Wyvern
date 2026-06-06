@@ -6,6 +6,8 @@ export interface ConnectionRow {
   id: string;
   workspace_id: string;
   owner_id: string | null;
+  folder_id?: string | null;
+  tags?: string | null;
   name: string;
   hostname: string;
   port: number;

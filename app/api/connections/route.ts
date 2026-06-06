@@ -84,13 +84,15 @@ function syncLegacyColumns(
     hostname?: string;
     username?: string | null;
     workspace_id?: string;
+    folder_id?: string | null;
+    tags?: string | null;
   },
 ) {
   const primary = primaryMethod(methods)!;
   getDb()
     .prepare(
       `UPDATE connections SET name = ?, hostname = ?, port = ?, protocol = ?, username = ?,
-       credential_id = ?, workspace_id = ?, updated_at = datetime('now') WHERE id = ?`,
+       credential_id = ?, workspace_id = ?, folder_id = ?, tags = ?, updated_at = datetime('now') WHERE id = ?`,
     )
     .run(
       fields.name,
@@ -100,6 +102,8 @@ function syncLegacyColumns(
       fields.username ?? null,
       primaryCredentialId(methods),
       fields.workspace_id,
+      fields.folder_id ?? null,
+      fields.tags ?? null,
       id,
     );
 }
@@ -201,15 +205,20 @@ export async function POST(request: NextRequest) {
     const id = uuidv4();
     const name = (body.name as string) || `${source.name} (copy)`;
 
+    const folderId = (body.folder_id as string | undefined) ?? (source as { folder_id?: string | null }).folder_id ?? null;
+    const tags = (body.tags as string | undefined) ?? (source as { tags?: string | null }).tags ?? null;
+
     getDb()
       .prepare(
-        `INSERT INTO connections (id, workspace_id, owner_id, name, hostname, port, protocol, username, credential_id, mac_address, wol_broadcast)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO connections (id, workspace_id, owner_id, folder_id, tags, name, hostname, port, protocol, username, credential_id, mac_address, wol_broadcast)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
         workspaceId,
         user.id,
+        folderId,
+        tags,
         name,
         source.hostname,
         primary.port,
@@ -267,15 +276,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const folderId = body.folder_id as string | null | undefined ?? null;
+  const tags = body.tags as string | null | undefined ?? null;
+
   getDb()
     .prepare(
-      `INSERT INTO connections (id, workspace_id, owner_id, name, hostname, port, protocol, username, credential_id, mac_address, wol_broadcast)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO connections (id, workspace_id, owner_id, folder_id, tags, name, hostname, port, protocol, username, credential_id, mac_address, wol_broadcast)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       id,
       workspaceId,
       user.id,
+      folderId,
+      tags,
       body.name,
       body.hostname,
       primary.port,
@@ -358,11 +372,16 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: credError.error }, { status: 400 });
   }
 
+  const folderId = "folder_id" in updates ? (updates.folder_id as string | null) : (existing as { folder_id?: string | null }).folder_id ?? null;
+  const tags = "tags" in updates ? (updates.tags as string | null) : (existing as { tags?: string | null }).tags ?? null;
+
   syncLegacyColumns(id, methods, {
     name,
     hostname,
     username,
     workspace_id: workspaceId,
+    folder_id: folderId,
+    tags: tags,
   });
 
   let macAddress: string | null | undefined;

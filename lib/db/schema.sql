@@ -35,10 +35,20 @@ CREATE TABLE IF NOT EXISTS credentials (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS folders (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  parent_id TEXT REFERENCES folders(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS connections (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   owner_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL,
+  tags TEXT,
   name TEXT NOT NULL,
   hostname TEXT NOT NULL,
   port INTEGER NOT NULL,
@@ -135,3 +145,4 @@ CREATE INDEX IF NOT EXISTS idx_connections_owner ON connections(owner_id);
 CREATE INDEX IF NOT EXISTS idx_credentials_workspace ON credentials(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_history_user ON connection_history(user_id);
 CREATE INDEX IF NOT EXISTS idx_pinned_user ON pinned_connections(user_id);
+CREATE INDEX IF NOT EXISTS idx_folders_workspace ON folders(workspace_id);

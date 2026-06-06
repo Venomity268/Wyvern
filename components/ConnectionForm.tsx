@@ -18,8 +18,16 @@ export interface ConnectionFormData {
   methods: ConnectionMethodInput[];
   username?: string | null;
   workspace_id?: string;
+  folder_id?: string | null;
+  tags?: string | null;
   mac_address?: string | null;
   wol_broadcast?: string | null;
+}
+
+export interface FolderOption {
+  id: string;
+  name: string;
+  parent_id: string | null;
 }
 
 const PROTOCOLS: ConnectionProtocol[] = ["ssh", "vnc", "rdp"];
@@ -38,11 +46,14 @@ interface ConnectionFormProps {
   workspaceId: string;
   workspaces?: WorkspaceOption[];
   credentials: CredentialOption[];
+  folders?: FolderOption[];
   initial?: Partial<ConnectionFormData> & {
     methods?: ConnectionMethodInput[];
     protocol?: ConnectionProtocol;
     port?: number;
     credential_id?: string | null;
+    folder_id?: string | null;
+    tags?: string | null;
     mac_address?: string | null;
     wol_broadcast?: string | null;
   };
@@ -80,6 +91,7 @@ export function ConnectionForm({
   workspaceId,
   workspaces = [],
   credentials,
+  folders = [],
   initial,
   onSubmit,
   onCancel,
@@ -87,6 +99,8 @@ export function ConnectionForm({
   const initialMethods = defaultMethods(initial);
   const [name, setName] = useState(initial?.name || "");
   const [hostname, setHostname] = useState(initial?.hostname || "");
+  const [folderId, setFolderId] = useState<string | null>(initial?.folder_id || null);
+  const [tags, setTags] = useState(initial?.tags || "");
   const [enabled, setEnabled] = useState<Record<ConnectionProtocol, boolean>>({
     ssh: initialMethods.some((m) => m.protocol === "ssh"),
     vnc: initialMethods.some((m) => m.protocol === "vnc"),
@@ -108,6 +122,14 @@ export function ConnectionForm({
   const [targetWorkspaceId, setTargetWorkspaceId] = useState(workspaceId);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  function getFolderPath(fid: string | null, list: FolderOption[]): string {
+    if (!fid) return "";
+    const f = list.find((item) => item.id === fid);
+    if (!f) return "";
+    const parentPath = getFolderPath(f.parent_id, list);
+    return parentPath ? `${parentPath} / ${f.name}` : f.name;
+  }
 
   function toggleProtocol(p: ConnectionProtocol) {
     setEnabled((prev) => ({ ...prev, [p]: !prev[p] }));
@@ -137,6 +159,8 @@ export function ConnectionForm({
         methods,
         username,
         workspace_id: targetWorkspaceId,
+        folder_id: folderId,
+        tags: tags.trim() ? tags.split(",").map((t) => t.trim()).filter(Boolean).join(",") : null,
         mac_address: macAddress.trim() || null,
         wol_broadcast: wolBroadcast.trim() || null,
       });
@@ -182,6 +206,34 @@ export function ConnectionForm({
             <div className="space-y-2">
               <Label htmlFor="hostname">Hostname</Label>
               <Input id="hostname" value={hostname} onChange={(e) => setHostname(e.target.value)} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="folder">Folder</Label>
+              <select
+                id="folder"
+                value={folderId || ""}
+                onChange={(e) => setFolderId(e.target.value || null)}
+                className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
+              >
+                <option value="">(Root / None)</option>
+                {[...folders]
+                  .sort((a, b) => getFolderPath(a.id, folders).localeCompare(getFolderPath(b.id, folders)))
+                  .map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {getFolderPath(f.id, folders)}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tags">Tags</Label>
+              <Input
+                id="tags"
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+                placeholder="production, staging, database"
+              />
+              <p className="text-xs text-zinc-500">Comma-separated tags (e.g. web, production)</p>
             </div>
           </div>
 
