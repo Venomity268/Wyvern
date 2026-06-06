@@ -46,6 +46,8 @@ export interface User {
   email: string;
   password_hash: string;
   role: "user" | "admin";
+  totp_secret?: string | null;
+  totp_enabled?: number;
   created_at: string;
 }
 

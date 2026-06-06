@@ -5,7 +5,7 @@ import { getDb } from "@/lib/db/index";
 function profileFromDb(userId: string) {
   return getDb()
     .prepare(
-      "SELECT id, email, role, display_name, created_at FROM users WHERE id = ?",
+      "SELECT id, email, role, display_name, created_at, totp_enabled FROM users WHERE id = ?",
     )
     .get(userId) as
     | {
@@ -14,6 +14,7 @@ function profileFromDb(userId: string) {
         role: "user" | "admin";
         display_name: string | null;
         created_at: string;
+        totp_enabled: number;
       }
     | undefined;
 }
@@ -36,6 +37,7 @@ export async function GET() {
       role: profile.role,
       displayName: profile.display_name,
       createdAt: profile.created_at,
+      totpEnabled: profile.totp_enabled === 1,
     },
   });
 }
@@ -79,6 +81,7 @@ export async function PATCH(request: NextRequest) {
       role: profile.role,
       displayName: profile.display_name,
       createdAt: profile.created_at,
+      totpEnabled: profile.totp_enabled === 1,
     },
   });
 }

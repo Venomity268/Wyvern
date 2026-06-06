@@ -12,6 +12,8 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [totpRequired, setTotpRequired] = useState(false);
+  const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -23,7 +25,7 @@ export default function LoginPage() {
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, code: totpRequired ? code : undefined }),
     });
 
     if (!res.ok) {
@@ -39,6 +41,13 @@ export default function LoginPage() {
       return;
     }
 
+    const data = await res.json();
+    if (data.totpRequired) {
+      setTotpRequired(true);
+      setLoading(false);
+      return;
+    }
+
     router.push("/");
     router.refresh();
   }
@@ -50,40 +59,81 @@ export default function LoginPage() {
           <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800">
             <TerminalSquare className="h-6 w-6 text-zinc-300" />
           </div>
-          <CardTitle>wterm Bastion</CardTitle>
-          <p className="text-sm text-zinc-500">Sign in to manage SSH and VNC connections</p>
+          <CardTitle>{totpRequired ? "Two-Factor Verification" : "wterm Bastion"}</CardTitle>
+          <p className="text-sm text-zinc-500">
+            {totpRequired
+              ? "Enter the 6-digit code from your authenticator app"
+              : "Sign in to manage SSH and VNC connections"}
+          </p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-zinc-300">
-                Email
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoFocus
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-zinc-300">
-                Password
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
+            {totpRequired ? (
+              <div className="space-y-2">
+                <Label htmlFor="code" className="text-zinc-300">
+                  Authentication Code
+                </Label>
+                <Input
+                  id="code"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                  placeholder="000000"
+                  required
+                  autoFocus
+                  className="text-center text-lg tracking-widest"
+                />
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="email" className="text-zinc-300">
+                    Email
+                  </Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="text-zinc-300">
+                    Password
+                  </Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              </>
+            )}
             {error && <p className="text-sm text-red-400">{error}</p>}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Signing in..." : "Sign in"}
+              {loading ? "Verifying..." : totpRequired ? "Verify" : "Sign in"}
             </Button>
+            {totpRequired && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full text-zinc-400 hover:text-zinc-200 mt-2"
+                onClick={() => {
+                  setTotpRequired(false);
+                  setCode("");
+                  setError("");
+                }}
+              >
+                Back to sign in
+              </Button>
+            )}
           </form>
         </CardContent>
       </Card>

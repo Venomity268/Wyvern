@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import QRCode from "qrcode";
 
 interface ProfileUser {
   id: string;
@@ -12,6 +13,7 @@ interface ProfileUser {
   role: "user" | "admin";
   displayName: string | null;
   createdAt: string;
+  totpEnabled?: boolean;
 }
 
 export default function SettingsPage() {
@@ -27,6 +29,19 @@ export default function SettingsPage() {
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  // 2FA states
+  const [totpSecret, setTotpSecret] = useState("");
+  const [totpQrUri, setTotpQrUri] = useState("");
+  const [totpQrDataUrl, setTotpQrDataUrl] = useState("");
+  const [showTotpSetup, setShowTotpSetup] = useState(false);
+  const [totpCode, setTotpCode] = useState("");
+  const [totpVerifyError, setTotpVerifyError] = useState("");
+  const [totpSuccessMsg, setTotpSuccessMsg] = useState("");
+  const [disablePassword, setDisablePassword] = useState("");
+  const [disableError, setDisableError] = useState("");
+  const [disableLoading, setDisableLoading] = useState(false);
+  const [setupLoading, setSetupLoading] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -90,6 +105,92 @@ export default function SettingsPage() {
     setCurrentPassword("");
     setNewPassword("");
     setConfirmPassword("");
+  }
+
+  async function handleSetupTotp() {
+    setSetupLoading(true);
+    setTotpVerifyError("");
+    setTotpSuccessMsg("");
+    try {
+      const res = await fetch("/api/auth/totp/setup", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setTotpVerifyError(data.error || "Failed to initiate 2FA setup");
+        return;
+      }
+      setTotpSecret(data.secret);
+      setTotpQrUri(data.qrUri);
+
+      const dataUrl = await QRCode.toDataURL(data.qrUri, {
+        width: 200,
+        margin: 2,
+        color: {
+          dark: "#000000",
+          light: "#FFFFFF",
+        },
+      });
+      setTotpQrDataUrl(dataUrl);
+
+      setShowTotpSetup(true);
+    } catch (err) {
+      setTotpVerifyError("Failed to initiate 2FA setup");
+    } finally {
+      setSetupLoading(false);
+    }
+  }
+
+  async function handleVerifyTotp(e: React.FormEvent) {
+    e.preventDefault();
+    setTotpVerifyError("");
+    setTotpSuccessMsg("");
+    try {
+      const res = await fetch("/api/auth/totp/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: totpCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setTotpVerifyError(data.error || "Invalid verification code");
+        return;
+      }
+      setTotpSuccessMsg("Two-factor authentication has been enabled successfully.");
+      setShowTotpSetup(false);
+      setTotpCode("");
+      if (profile) {
+        setProfile({ ...profile, totpEnabled: true });
+      }
+    } catch (err) {
+      setTotpVerifyError("Failed to verify code");
+    }
+  }
+
+  async function handleDisableTotp(e: React.FormEvent) {
+    e.preventDefault();
+    setDisableError("");
+    setTotpSuccessMsg("");
+    setDisableLoading(true);
+    try {
+      const res = await fetch("/api/auth/totp/disable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: disablePassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setDisableError(data.error || "Failed to disable 2FA");
+        return;
+      }
+      setTotpSuccessMsg("Two-factor authentication has been disabled.");
+      setDisablePassword("");
+      if (profile) {
+        setProfile({ ...profile, totpEnabled: false });
+      }
+    } catch (err) {
+      setDisableError("Failed to disable 2FA");
+    } finally {
+      setDisableLoading(false);
+    }
   }
 
   return (
@@ -183,6 +284,104 @@ export default function SettingsPage() {
               {passwordLoading ? "Saving…" : "Update password"}
             </Button>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Two-Factor Authentication (2FA)</CardTitle>
+          <p className="text-sm text-muted">Secure your account with a time-based verification code (TOTP).</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {totpSuccessMsg && <p className="text-sm text-emerald-400 font-medium">{totpSuccessMsg}</p>}
+
+          {profile?.totpEnabled ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 rounded-lg border border-emerald-950 bg-emerald-950/20 p-3 text-sm text-emerald-400">
+                <span className="text-lg">🛡️</span>
+                <div>
+                  <span className="font-semibold block">2FA is Enabled</span>
+                  <span>Your account is protected by an additional verification code step at login.</span>
+                </div>
+              </div>
+
+              <form onSubmit={handleDisableTotp} className="space-y-3 pt-2 border-t border-zinc-800">
+                <h4 className="text-sm font-medium text-zinc-200">Disable 2FA</h4>
+                <div className="space-y-2">
+                  <Label htmlFor="disable-password">Enter password to disable</Label>
+                  <Input
+                    id="disable-password"
+                    type="password"
+                    value={disablePassword}
+                    onChange={(e) => setDisablePassword(e.target.value)}
+                    placeholder="Your account password"
+                    required
+                  />
+                </div>
+                {disableError && <p className="text-sm text-red-400">{disableError}</p>}
+                <Button type="submit" variant="destructive" disabled={disableLoading}>
+                  {disableLoading ? "Disabling…" : "Disable 2FA"}
+                </Button>
+              </form>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {!showTotpSetup ? (
+                <div>
+                  <p className="text-sm text-zinc-400 mb-3">
+                    Two-factor authentication is currently disabled. Enable it to require a 6-digit verification code from apps like Google Authenticator or Authy when logging in.
+                  </p>
+                  <Button onClick={handleSetupTotp} disabled={setupLoading}>
+                    {setupLoading ? "Loading setup..." : "Setup 2FA"}
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-900/30 p-4">
+                  <h4 className="text-sm font-semibold text-zinc-100">Setup two-factor authentication</h4>
+                  
+                  <div className="flex flex-col items-center gap-3">
+                    {totpQrDataUrl && (
+                      <img
+                        src={totpQrDataUrl}
+                        alt="Scan this QR code with your authenticator app"
+                        className="border border-zinc-700 bg-white p-2 rounded"
+                        width={200}
+                        height={200}
+                      />
+                    )}
+                    <p className="text-xs text-zinc-400 text-center">
+                      Scan the QR code, or manually enter the key below into your authenticator app:
+                    </p>
+                    <code className="bg-zinc-950 px-3 py-1.5 rounded font-mono text-sm tracking-wider select-all text-zinc-300">
+                      {totpSecret}
+                    </code>
+                  </div>
+
+                  <form onSubmit={handleVerifyTotp} className="space-y-3 pt-2 border-t border-zinc-800">
+                    <div className="space-y-1">
+                      <Label htmlFor="totp-code">Verification Code</Label>
+                      <Input
+                        id="totp-code"
+                        value={totpCode}
+                        onChange={(e) => setTotpCode(e.target.value)}
+                        placeholder="e.g. 123456"
+                        required
+                        maxLength={6}
+                        className="font-mono text-center tracking-widest text-lg"
+                      />
+                    </div>
+                    {totpVerifyError && <p className="text-sm text-red-400">{totpVerifyError}</p>}
+                    <div className="flex gap-2">
+                      <Button type="submit">Verify and Enable</Button>
+                      <Button type="button" variant="outline" onClick={() => setShowTotpSetup(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SftpEntry } from "@/lib/sftp/protocol";
 import {
   fileKind,
@@ -112,16 +112,6 @@ export function useFileManager(
     }
   }, [path, sftp]);
 
-  useEffect(() => {
-    if (sftp.ready) {
-      const timeout = setTimeout(() => {
-        setPath(sftp.cwd);
-        void refresh();
-      }, 0);
-      return () => clearTimeout(timeout);
-    }
-  }, [sftp.ready, sftp.cwd, refresh]);
-
   const navigateTo = useCallback(
     async (target: string) => {
       setLoading(true);
@@ -140,6 +130,20 @@ export function useFileManager(
     },
     [sftp],
   );
+
+  const navigateRef = useRef(navigateTo);
+  useEffect(() => {
+    navigateRef.current = navigateTo;
+  });
+
+  useEffect(() => {
+    if (sftp.ready) {
+      const timeout = setTimeout(() => {
+        void navigateRef.current(sftp.cwd);
+      }, 0);
+      return () => clearTimeout(timeout);
+    }
+  }, [sftp.ready, sftp.cwd]);
 
   const goUp = useCallback(() => {
     void navigateTo(parentPath(path || sftp.cwd));

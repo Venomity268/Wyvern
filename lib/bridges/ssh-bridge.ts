@@ -25,6 +25,7 @@ interface SshInitMessage {
   password?: string;
   privateKey?: string;
   username?: string;
+  execCommand?: string;
 }
 
 interface ForwardAddMessage {
@@ -260,62 +261,75 @@ export function handleSshConnection(ws: WebSocket, user: SessionUser) {
       const cols = params.cols || 120;
       const rows = params.rows || 40;
 
-      sshClient!.shell(
-        { term: "xterm-256color", cols, rows },
-        (err, stream) => {
-          if (err) {
-            ws.send(`\r\n\x1b[31mFailed to open shell: ${err.message}\x1b[0m\r\n`);
-            ws.close();
-            cleanup("error", err.message);
-            return;
+      const handleStream = (err: Error | undefined, stream: import("ssh2").ClientChannel) => {
+        if (err) {
+          const errMsg = params.execCommand
+            ? `Failed to execute command: ${err.message}`
+            : `Failed to open shell: ${err.message}`;
+          ws.send(`\r\n\x1b[31m${errMsg}\x1b[0m\r\n`);
+          ws.close();
+          cleanup("error", err.message);
+          return;
+        }
+
+        shellStream = stream;
+
+        stream.on("data", (chunk: Buffer) => {
+          resetIdleTimer();
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(chunk, { binary: true });
+          }
+        });
+
+        stream.on("close", () => {
+          if (ws.readyState === WebSocket.OPEN) ws.close();
+          cleanup("completed");
+        });
+
+        ws.on("message", (msg: Buffer | string | ArrayBuffer) => {
+          if (msg instanceof ArrayBuffer || Buffer.isBuffer(msg)) {
+            const buf = Buffer.isBuffer(msg) ? msg : Buffer.from(msg);
+            if (zmodemActive && shellStream) {
+              resetIdleTimer();
+              shellStream.write(buf);
+              return;
+            }
           }
 
-          shellStream = stream;
+          const input =
+            typeof msg === "string"
+              ? msg
+              : Buffer.isBuffer(msg)
+                ? msg.toString("utf-8")
+                : Buffer.from(msg as ArrayBuffer).toString("utf-8");
+          if (handleControlMessage(input)) return;
 
-          stream.on("data", (chunk: Buffer) => {
-            resetIdleTimer();
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(chunk, { binary: true });
-            }
-          });
+          resetIdleTimer();
+          try {
+            stream.write(input);
+          } catch {
+            /* stream closed */
+          }
+        });
 
-          stream.on("close", () => {
-            if (ws.readyState === WebSocket.OPEN) ws.close();
-            cleanup("completed");
-          });
+        ws.on("close", () => {
+          stream.end();
+          cleanup("completed");
+        });
+      };
 
-          ws.on("message", (msg: Buffer | string | ArrayBuffer) => {
-            if (msg instanceof ArrayBuffer || Buffer.isBuffer(msg)) {
-              const buf = Buffer.isBuffer(msg) ? msg : Buffer.from(msg);
-              if (zmodemActive && shellStream) {
-                resetIdleTimer();
-                shellStream.write(buf);
-                return;
-              }
-            }
-
-            const input =
-              typeof msg === "string"
-                ? msg
-                : Buffer.isBuffer(msg)
-                  ? msg.toString("utf-8")
-                  : Buffer.from(msg as ArrayBuffer).toString("utf-8");
-            if (handleControlMessage(input)) return;
-
-            resetIdleTimer();
-            try {
-              stream.write(input);
-            } catch {
-              /* stream closed */
-            }
-          });
-
-          ws.on("close", () => {
-            stream.end();
-            cleanup("completed");
-          });
-        },
-      );
+      if (params.execCommand) {
+        sshClient!.exec(
+          params.execCommand,
+          { pty: { term: "xterm-256color", cols, rows } },
+          handleStream,
+        );
+      } else {
+        sshClient!.shell(
+          { term: "xterm-256color", cols, rows },
+          handleStream,
+        );
+      }
     });
 
     sshClient.on("error", (err) => {

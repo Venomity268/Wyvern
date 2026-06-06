@@ -79,6 +79,7 @@ export function canMoveToWorkspace(user: SessionUser, workspaceId: string): bool
 }
 
 export function credentialInWorkspace(credentialId: string, workspaceId: string): boolean {
+  if (credentialId === "__bastion__") return true;
   const cred = getDb()
     .prepare("SELECT workspace_id FROM credentials WHERE id = ?")
     .get(credentialId) as { workspace_id: string } | undefined;

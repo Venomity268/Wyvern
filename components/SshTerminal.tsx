@@ -2,6 +2,7 @@
 
 import {
   forwardRef,
+  memo,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -10,6 +11,7 @@ import {
 } from "react";
 import { Terminal, useTerminal } from "@wterm/react";
 import "@wterm/react/css";
+import { GhosttyCore } from "@wterm/ghostty";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,10 +49,12 @@ interface SshTerminalCoreProps {
     password?: string;
     privateKey?: string;
   }) => void;
+  onResize?: (cols: number, rows: number) => void;
   paneVisible?: boolean;
   sizeContainerRef?: React.RefObject<HTMLElement | null>;
   /** When false, do not steal focus on connect (e.g. embedded SSH beside a desktop). */
   autoFocusOnConnect?: boolean;
+  execCommand?: string;
 }
 
 export interface SshTerminalHandle {
@@ -71,7 +75,7 @@ function useTerminalDimensions(sizeContainerRef?: React.RefObject<HTMLElement | 
   }, [sizeContainerRef]);
 }
 
-export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
+const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
   function SshTerminal(
     {
       connectionId,
@@ -80,6 +84,7 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
       hostname,
       defaultUsername,
       hasStoredCredential,
+      execCommand,
       variant = "page",
       chromeless = false,
       onClose,
@@ -88,6 +93,7 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
       onWebSocketReady,
       onWebSocketClose,
       onAuthenticated,
+      onResize,
       paneVisible = true,
       sizeContainerRef,
       autoFocusOnConnect = true,
@@ -95,6 +101,30 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
     ref,
   ) {
     const { ref: termRef, write, resize, focus } = useTerminal();
+    const [ghosttyCore, setGhosttyCore] = useState<GhosttyCore | null>(null);
+    const [coreLoading, setCoreLoading] = useState(true);
+
+    useEffect(() => {
+      let active = true;
+      setCoreLoading(true);
+      GhosttyCore.load({ wasmPath: "/ghostty-vt.wasm" })
+        .then((core) => {
+          if (active) {
+            setGhosttyCore(core);
+            setCoreLoading(false);
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to load GhosttyCore:", err);
+          if (active) {
+            setCoreLoading(false);
+          }
+        });
+      return () => {
+        active = false;
+      };
+    }, []);
+
     const wsRef = useRef<WebSocket | null>(null);
     const connectGenRef = useRef(0);
     const intentionalCloseRef = useRef(false);
@@ -102,6 +132,11 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
     const fallbackContainerRef = useRef<HTMLDivElement>(null);
     const containerRef = sizeContainerRef ?? fallbackContainerRef;
     const getDimensions = useTerminalDimensions(containerRef);
+    const [dimensions, setDimensions] = useState(() => getDimensions());
+    const dimensionsRef = useRef(dimensions);
+    useEffect(() => {
+      dimensionsRef.current = dimensions;
+    }, [dimensions]);
     const [state, setState] = useState<SshConnectionState>(
       hasStoredCredential ? "connecting" : "auth",
     );
@@ -137,13 +172,13 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
       write("\x1b[2J\x1b[3J\x1b[H");
     }, [write]);
 
-    const fitTerminal = useCallback(() => {
-      const { cols, rows } = getDimensions();
-      resize(cols, rows);
+    const handleResize = useCallback((cols: number, rows: number) => {
+      setDimensions({ cols, rows });
+      onResize?.(cols, rows);
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ type: "resize", cols, rows }));
       }
-    }, [getDimensions, resize]);
+    }, [onResize]);
 
     const connect = useCallback(
       (auth?: { username?: string; password?: string; privateKey?: string }) => {
@@ -178,14 +213,13 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
             privateKey: resolvedPrivateKey || undefined,
           });
           setTimeout(() => {
-            fitTerminal();
             if (autoFocusOnConnect) focus();
-          }, 0);
+          }, 50);
         };
 
         ws.onopen = () => {
           if (gen !== connectGenRef.current) return;
-          const { cols, rows } = getDimensions();
+          const { cols, rows } = dimensionsRef.current;
           const msg: Record<string, unknown> = {
             cols,
             rows,
@@ -196,6 +230,7 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
           if (resolvedUsername) msg.username = resolvedUsername;
           if (resolvedPrivateKey) msg.privateKey = resolvedPrivateKey;
           else if (resolvedPassword) msg.password = resolvedPassword;
+          if (execCommand) msg.execCommand = execCommand;
           ws.send(JSON.stringify(msg));
           onWebSocketReady?.(ws);
         };
@@ -275,10 +310,10 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
         updateState,
         username,
         clearTerminal,
-        fitTerminal,
         focus,
         autoFocusOnConnect,
         onWebSocketReady,
+        execCommand,
       ],
     );
 
@@ -301,27 +336,6 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
         wsRef.current = null;
       };
     }, [connectionId, quickSessionId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    useEffect(() => {
-      if (!paneVisible || state !== "connected") return;
-      const id = requestAnimationFrame(() => {
-        requestAnimationFrame(() => fitTerminal());
-      });
-      return () => cancelAnimationFrame(id);
-    }, [paneVisible, state, fitTerminal]);
-
-    useEffect(() => {
-      const container = containerRef.current;
-      if (!container) return;
-
-      const observer = new ResizeObserver(() => {
-        if (wsRef.current?.readyState === WebSocket.OPEN || stateRef.current === "connected") {
-          fitTerminal();
-        }
-      });
-      observer.observe(container);
-      return () => observer.disconnect();
-    }, [containerRef, fitTerminal]);
 
     const handleData = useCallback((data: string) => {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -435,8 +449,15 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
     );
 
     const sessionBody = (
-      <div ref={fallbackContainerRef} className="relative h-full min-h-0 bg-zinc-950">
-        {state === "connecting" && (
+      <div ref={fallbackContainerRef} className="relative w-full h-full overflow-hidden bg-zinc-950">
+        {coreLoading && (
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-zinc-950 gap-2">
+            <Loader2 className="h-8 w-8 animate-spin text-zinc-400" />
+            <span className="text-[10px] text-zinc-500 font-mono">Loading Ghostty Core...</span>
+          </div>
+        )}
+
+        {state === "connecting" && !coreLoading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-950/80">
             <Loader2 className="h-8 w-8 animate-spin text-zinc-400" />
           </div>
@@ -449,7 +470,7 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
         )}
 
         <div
-          className={`ssh-terminal-host flex h-full min-h-0 flex-col ${showAuth || state === "connecting" ? "invisible" : ""}`}
+          className={`ssh-terminal-host relative w-full h-full overflow-hidden flex flex-col ${showAuth || state === "connecting" ? "hidden" : ""}`}
         >
           {!chromeless && (
             <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-2 py-1">
@@ -463,14 +484,16 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
             </div>
           )}
           <div
-            className="min-h-0 flex-1 overflow-hidden cursor-text"
+            className="relative w-full h-full min-h-0 flex-1 overflow-hidden cursor-text"
             onClick={() => {
               focus();
             }}
           >
             <Terminal
               ref={termRef}
+              core={ghosttyCore || undefined}
               onData={handleData}
+              onResize={handleResize}
               autoResize
               className="h-full w-full"
             />
@@ -490,5 +513,26 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
     );
   },
 );
+
+const SshTerminalMemo = memo(
+  SshTerminalComponent,
+  (prevProps, nextProps) => {
+    return (
+      prevProps.connectionId === nextProps.connectionId &&
+      prevProps.quickSessionId === nextProps.quickSessionId &&
+      prevProps.connectionName === nextProps.connectionName &&
+      prevProps.hostname === nextProps.hostname &&
+      prevProps.defaultUsername === nextProps.defaultUsername &&
+      prevProps.hasStoredCredential === nextProps.hasStoredCredential &&
+      prevProps.execCommand === nextProps.execCommand &&
+      prevProps.variant === nextProps.variant &&
+      prevProps.chromeless === nextProps.chromeless &&
+      prevProps.paneVisible === nextProps.paneVisible &&
+      prevProps.autoFocusOnConnect === nextProps.autoFocusOnConnect
+    );
+  }
+);
+
+export const SshTerminal = SshTerminalMemo;
 
 export type { SshConnectionInfo };

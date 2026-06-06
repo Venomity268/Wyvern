@@ -91,6 +91,17 @@ export async function PATCH(request: NextRequest) {
       if (parentId === id) {
         return NextResponse.json({ error: "A folder cannot be its own parent" }, { status: 400 });
       }
+      // Check for cycles recursively: ensure parentId is not a descendant of id
+      let currentParentId: string | null = parentId;
+      while (currentParentId) {
+        if (currentParentId === id) {
+          return NextResponse.json({ error: "Cannot move a folder into one of its descendants (would create a cycle)" }, { status: 400 });
+        }
+        const parentFolder = getDb()
+          .prepare("SELECT parent_id FROM folders WHERE id = ?")
+          .get(currentParentId) as { parent_id: string | null } | undefined;
+        currentParentId = parentFolder ? parentFolder.parent_id : null;
+      }
       const parent = getDb()
         .prepare("SELECT workspace_id FROM folders WHERE id = ?")
         .get(parentId) as { workspace_id: string } | undefined;

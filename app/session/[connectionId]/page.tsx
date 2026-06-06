@@ -6,8 +6,7 @@ import { getDb } from "@/lib/db/index";
 import { canViewConnection } from "@/lib/auth/access";
 import { getMethodPort, getMethodsForConnection } from "@/lib/db/connection-methods";
 import { findEmbeddedSshTarget } from "@/lib/ssh/embedded-target";
-import { SshSessionViewer } from "@/components/SshSessionViewer";
-import { GuacamoleViewer } from "@/components/GuacamoleViewer";
+import { SshSessionViewer, GuacamoleViewer } from "@/components/SessionViewerWrapper";
 import { isGuacProtocol, type ConnectionProtocol, type GuacProtocol } from "@/lib/protocols";
 import { sshAuthInfo, guacAuthInfo } from "@/lib/ssh/auth-info";
 

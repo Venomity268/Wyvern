@@ -69,6 +69,11 @@ export function GuacamoleViewer({
   sshHasStoredCredential = false,
   chromeless = false,
 }: GuacamoleViewerProps) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const effectiveSshConnectionId = sshConnectionId ?? connectionId;
   const effectiveSshConnectionName = sshConnectionName ?? connectionName;
 
@@ -463,6 +468,14 @@ export function GuacamoleViewer({
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [portForwardOpen, clipboardOpen]);
+
+  if (!mounted) {
+    return (
+      <div className="flex items-center justify-center h-full w-full bg-zinc-950 text-zinc-500 text-sm">
+        Loading session...
+      </div>
+    );
+  }
 
   const toggleFullscreen = useCallback(async () => {
     const el = sessionRef.current;

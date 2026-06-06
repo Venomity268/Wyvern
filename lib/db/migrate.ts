@@ -16,6 +16,19 @@ export function runMigrations(db: Database.Database) {
   migrateConnectionHostInfo(db);
   migrateHostInfoMetrics(db);
   migrateFolders(db);
+  migrateTotp(db);
+}
+
+function migrateTotp(db: Database.Database) {
+  const sql = tableSql(db, "users");
+  if (sql) {
+    if (!sql.includes("totp_secret")) {
+      db.exec("ALTER TABLE users ADD COLUMN totp_secret TEXT");
+    }
+    if (!sql.includes("totp_enabled")) {
+      db.exec("ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0");
+    }
+  }
 }
 
 function migrateFolders(db: Database.Database) {

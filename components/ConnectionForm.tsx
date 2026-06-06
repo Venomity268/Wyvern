@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { defaultPort } from "@/lib/utils";
+import { Loader2 } from "lucide-react";
 import type { ConnectionProtocol } from "@/lib/protocols";
 import type { ConnectionMethodInput } from "@/lib/db/connection-methods";
 
@@ -48,6 +49,7 @@ interface ConnectionFormProps {
   credentials: CredentialOption[];
   folders?: FolderOption[];
   initial?: Partial<ConnectionFormData> & {
+    id?: string;
     methods?: ConnectionMethodInput[];
     protocol?: ConnectionProtocol;
     port?: number;
@@ -122,6 +124,53 @@ export function ConnectionForm({
   const [targetWorkspaceId, setTargetWorkspaceId] = useState(workspaceId);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // SSH Key Deployment States
+  const [bastionPubKey, setBastionPubKey] = useState("");
+  const [deployingKey, setDeployingKey] = useState(false);
+  const [deployError, setDeployError] = useState("");
+  const [deploySuccess, setDeploySuccess] = useState(false);
+  const [deployPassword, setDeployPassword] = useState("");
+  const [showDeployPassword, setShowDeployPassword] = useState(false);
+
+  useEffect(() => {
+    if (initial?.id) {
+      void (async () => {
+        try {
+          const res = await fetch(`/api/connections/${initial.id}/deploy-key`);
+          if (res.ok) {
+            const data = await res.json();
+            setBastionPubKey(data.publicKey || "");
+          }
+        } catch {}
+      })();
+    }
+  }, [initial?.id]);
+
+  async function handleDeployKey() {
+    setDeployingKey(true);
+    setDeployError("");
+    setDeploySuccess(false);
+    try {
+      const res = await fetch(`/api/connections/${initial!.id}/deploy-key`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: deployPassword || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Deployment failed");
+      }
+      setDeploySuccess(true);
+      setDeployPassword("");
+      setShowDeployPassword(false);
+    } catch (err) {
+      setDeployError(err instanceof Error ? err.message : "Deployment failed");
+      setShowDeployPassword(true);
+    } finally {
+      setDeployingKey(false);
+    }
+  }
 
   function getFolderPath(fid: string | null, list: FolderOption[]): string {
     if (!fid) return "";
@@ -284,6 +333,9 @@ export function ConnectionForm({
                           className="flex h-8 w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 text-sm text-zinc-100"
                         >
                           <option value="">None — prompt at connect</option>
+                          {p === "ssh" && (
+                            <option value="__bastion__">Bastion SSH Key</option>
+                          )}
                           {credentials.map((c) => (
                             <option key={c.id} value={c.id}>
                               {c.label}
@@ -339,6 +391,103 @@ export function ConnectionForm({
                   placeholder="255.255.255.255"
                   className="h-8 font-mono text-sm"
                 />
+              </div>
+            </div>
+          )}
+
+          {initial?.id && enabled.ssh && (
+            <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+              <div>
+                <Label>Bastion SSH Key Deployment</Label>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Deploy this bastion's SSH public key to the remote server's <code>authorized_keys</code> to allow secure passwordless authentication.
+                </p>
+              </div>
+
+              {bastionPubKey && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-zinc-400">Bastion Public Key</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-6 text-[10px] px-2 text-zinc-300 hover:text-zinc-150"
+                      onClick={() => {
+                        navigator.clipboard.writeText(bastionPubKey);
+                        alert("Public key copied to clipboard!");
+                      }}
+                    >
+                      Copy
+                    </Button>
+                  </div>
+                  <pre className="bg-zinc-950 p-2 rounded text-[10px] font-mono text-zinc-400 overflow-x-auto select-all max-h-16 border border-zinc-850">
+                    {bastionPubKey}
+                  </pre>
+                </div>
+              )}
+
+              {showDeployPassword && (
+                <div className="space-y-1.5 pt-1 border-t border-zinc-850">
+                  <Label htmlFor="deploy-pwd" className="text-xs text-zinc-400">
+                    Temporary SSH Password
+                  </Label>
+                  <p className="text-[10px] text-zinc-500">
+                    Enter the password for <code>{username || initial.username || "username"}</code> to connect and deploy the key.
+                  </p>
+                  <Input
+                    id="deploy-pwd"
+                    type="password"
+                    value={deployPassword}
+                    onChange={(e) => setDeployPassword(e.target.value)}
+                    placeholder="SSH password"
+                    className="h-8 max-w-sm bg-zinc-900 border-zinc-700"
+                  />
+                </div>
+              )}
+
+              {deployError && (
+                <p className="text-xs text-red-400 font-medium">
+                  {deployError}
+                </p>
+              )}
+              {deploySuccess && (
+                <p className="text-xs text-emerald-400 font-medium">
+                  Bastion public key deployed successfully! You can now use key-based authentication.
+                </p>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={deployingKey}
+                  onClick={() => void handleDeployKey()}
+                >
+                  {deployingKey ? (
+                    <>
+                      <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                      Deploying...
+                    </>
+                  ) : showDeployPassword ? (
+                    "Deploy with Password"
+                  ) : (
+                    "Deploy SSH Key Automatically"
+                  )}
+                </Button>
+                {showDeployPassword && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setShowDeployPassword(false);
+                      setDeployPassword("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                )}
               </div>
             </div>
           )}

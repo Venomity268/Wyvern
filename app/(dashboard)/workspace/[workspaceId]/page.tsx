@@ -419,12 +419,22 @@ export default function WorkspacePage() {
     )
   ).sort();
 
+  function getFolderDescendants(folderId: string, folderList: FolderOption[]): string[] {
+    const ids = [folderId];
+    const children = folderList.filter((f) => f.parent_id === folderId);
+    for (const child of children) {
+      ids.push(...getFolderDescendants(child.id, folderList));
+    }
+    return ids;
+  }
+
   const filteredConnections = connections.filter((c) => {
     // 1. Folder filter
     if (selectedFolderId === "unassigned") {
       if (c.folder_id !== null && c.folder_id !== undefined) return false;
     } else if (selectedFolderId !== null) {
-      if (c.folder_id !== selectedFolderId) return false;
+      const allowedFolderIds = getFolderDescendants(selectedFolderId, folders);
+      if (!c.folder_id || !allowedFolderIds.includes(c.folder_id)) return false;
     }
 
     // 2. Tag filter

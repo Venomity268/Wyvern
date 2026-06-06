@@ -4,6 +4,7 @@ import { getMethodPort, resolveSshMethodCredential } from "../db/connection-meth
 import { decryptSecret } from "../crypto/secrets";
 import { canViewConnection } from "../auth/access";
 import type { SessionUser } from "../auth/session-options";
+import { getOrCreateBastionKeypair } from "../ssh/ssh-keys";
 
 export interface ResolvedSshConnection {
   connection: {
@@ -80,7 +81,10 @@ export function resolveSshConnection(
 
   let username = auth?.username || undefined;
 
-  if (credentialId) {
+  if (credentialId === "__bastion__") {
+    const keypair = getOrCreateBastionKeypair();
+    privateKey = keypair.privateKey;
+  } else if (credentialId) {
     const cred = db
       .prepare("SELECT * FROM credentials WHERE id = ?")
       .get(credentialId) as {

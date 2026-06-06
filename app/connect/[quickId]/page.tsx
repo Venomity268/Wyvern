@@ -5,8 +5,7 @@ import { getSession } from "@/lib/auth/session";
 import { getDb, createPersonalWorkspace, listWorkspacesForUser } from "@/lib/db/index";
 import { getQuickSession } from "@/lib/quick-connect";
 import { QuickSessionShell } from "@/components/QuickSessionShell";
-import { SshSessionViewer } from "@/components/SshSessionViewer";
-import { GuacamoleViewer } from "@/components/GuacamoleViewer";
+import { SshSessionViewer, GuacamoleViewer } from "@/components/SessionViewerWrapper";
 import { isGuacProtocol, type GuacProtocol } from "@/lib/protocols";
 
 interface PageProps {

@@ -12,6 +12,7 @@ import {
   Network,
   RefreshCw,
   Keyboard,
+  Box,
 } from "lucide-react";
 import { useIsMobile } from "@/lib/hooks/useIsMobile";
 
@@ -20,12 +21,14 @@ interface SshToolbarProps {
   clipboardOpen: boolean;
   portForwardOpen: boolean;
   sftpOpen: boolean;
+  dockerOpen: boolean;
   showPortForward?: boolean;
   pasteText: string;
   onToggleFullscreen: () => void;
   onToggleClipboard: () => void;
   onTogglePortForward: () => void;
   onToggleSftp: () => void;
+  onToggleDocker: () => void;
   onPasteTextChange: (text: string) => void;
   onSendPaste: () => void;
   onReconnect: () => void;
@@ -38,12 +41,14 @@ export function SshToolbar({
   clipboardOpen,
   portForwardOpen,
   sftpOpen,
+  dockerOpen,
   showPortForward = true,
   pasteText,
   onToggleFullscreen,
   onToggleClipboard,
   onTogglePortForward,
   onToggleSftp,
+  onToggleDocker,
   onPasteTextChange,
   onSendPaste,
   onReconnect,
@@ -96,6 +101,15 @@ export function SshToolbar({
         >
           <FolderOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
           Files
+        </Button>
+        <Button
+          variant={dockerOpen ? "secondary" : "ghost"}
+          className="h-7 sm:h-8 text-zinc-300 px-1.5 sm:px-2.5 text-[11px] sm:text-xs gap-1 shrink-0"
+          onClick={onToggleDocker}
+          title="Remote Docker containers"
+        >
+          <Box className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+          Docker
         </Button>
 
         <span className="mx-1 h-5 w-px bg-zinc-700" />
