@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 import type { GuacProtocol } from "@/lib/protocols";
 import type { ZoomMode } from "@/lib/guac/display";
 import {
   ClipboardCopy,
   ClipboardPaste,
   HelpCircle,
+  Keyboard,
   LogOut,
   Maximize,
   Minimize,
@@ -15,22 +15,19 @@ import {
   Network,
   RefreshCw,
   Scan,
-  Keyboard,
   Terminal,
 } from "lucide-react";
+import { SessionToolButton, SessionToolDivider } from "@/components/session/SessionToolButton";
+import { Button } from "@/components/ui/button";
 
 interface DesktopToolbarProps {
   protocol: GuacProtocol;
   zoomMode: ZoomMode;
   isFullscreen: boolean;
   clipboardOpen: boolean;
-  remoteClipboard: string;
-  pasteText: string;
   onZoomModeChange: (mode: ZoomMode) => void;
   onToggleFullscreen: () => void;
   onToggleClipboard: () => void;
-  onPasteTextChange: (text: string) => void;
-  onSendToRemote: () => void;
   onCopyLocalClipboard: () => void;
   onCtrlAltDel: () => void;
   onReconnect: () => void;
@@ -47,13 +44,9 @@ export function DesktopToolbar({
   zoomMode,
   isFullscreen,
   clipboardOpen,
-  remoteClipboard,
-  pasteText,
   onZoomModeChange,
   onToggleFullscreen,
   onToggleClipboard,
-  onPasteTextChange,
-  onSendToRemote,
   onCopyLocalClipboard,
   onCtrlAltDel,
   onReconnect,
@@ -79,182 +72,130 @@ export function DesktopToolbar({
   }, [helpOpen]);
 
   return (
-    <div className="border-b border-zinc-800 bg-zinc-900/80">
-      <div className="flex items-center justify-between px-2 py-1">
-        <div className="flex flex-1 flex-nowrap items-center gap-1 overflow-x-auto scrollbar-none whitespace-nowrap min-w-0 py-0.5">
-        <Button
-          variant={zoomMode === "fit" ? "secondary" : "ghost"}
-          size="sm"
-          className="h-8 text-zinc-300"
-          onClick={() => onZoomModeChange("fit")}
-          title="Fit to window"
+    <>
+      <SessionToolButton
+        active={zoomMode === "fit"}
+        title="Fit to window"
+        onClick={() => onZoomModeChange("fit")}
+      >
+        <Scan className="h-4 w-4" />
+      </SessionToolButton>
+      <SessionToolButton
+        active={zoomMode === "actual"}
+        title="Actual size (100%)"
+        onClick={() => onZoomModeChange("actual")}
+      >
+        <Monitor className="h-4 w-4" />
+      </SessionToolButton>
+      <SessionToolButton
+        title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+        onClick={onToggleFullscreen}
+      >
+        {isFullscreen ?
+          <Minimize className="h-4 w-4" />
+        : <Maximize className="h-4 w-4" />}
+      </SessionToolButton>
+
+      <SessionToolDivider />
+
+      <SessionToolButton
+        active={clipboardOpen}
+        title="Clipboard panel"
+        onClick={onToggleClipboard}
+      >
+        <ClipboardPaste className="h-4 w-4" />
+      </SessionToolButton>
+      <SessionToolButton title="Paste from local clipboard" onClick={onCopyLocalClipboard}>
+        <ClipboardCopy className="h-4 w-4" />
+      </SessionToolButton>
+
+      {protocol === "rdp" && (
+        <SessionToolButton title="Send Ctrl+Alt+Del" onClick={onCtrlAltDel}>
+          <Keyboard className="h-4 w-4" />
+        </SessionToolButton>
+      )}
+
+      {hasSshConnection && onToggleSsh && (
+        <>
+          <SessionToolDivider />
+          <SessionToolButton active={sshOpen} title="SSH terminal split" onClick={onToggleSsh}>
+            <Terminal className="h-4 w-4" />
+          </SessionToolButton>
+        </>
+      )}
+      {hasSshConnection && onTogglePortForward && (
+        <SessionToolButton
+          active={portForwardOpen}
+          title="SSH port forwarding"
+          onClick={onTogglePortForward}
         >
-          <Scan className="mr-1 h-4 w-4" />
-          Fit
-        </Button>
-        <Button
-          variant={zoomMode === "actual" ? "secondary" : "ghost"}
-          size="sm"
-          className="h-8 text-zinc-300"
-          onClick={() => onZoomModeChange("actual")}
-          title="Actual size (100%)"
-        >
-          <Monitor className="mr-1 h-4 w-4" />
-          100%
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 text-zinc-300"
-          onClick={onToggleFullscreen}
-          title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-        >
-          {isFullscreen ? (
-            <Minimize className="mr-1 h-4 w-4" />
-          ) : (
-            <Maximize className="mr-1 h-4 w-4" />
-          )}
-          {isFullscreen ? "Exit" : "Fullscreen"}
-        </Button>
+          <Network className="h-4 w-4" />
+        </SessionToolButton>
+      )}
 
-        <span className="mx-1 h-5 w-px bg-zinc-700" />
+      <SessionToolDivider />
 
-        <Button
-          variant={clipboardOpen ? "secondary" : "ghost"}
-          size="sm"
-          className="h-8 text-zinc-300"
-          onClick={onToggleClipboard}
-          title="Clipboard panel"
-        >
-          <ClipboardPaste className="mr-1 h-4 w-4" />
-          Clipboard
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 text-zinc-300"
-          onClick={onCopyLocalClipboard}
-          title="Paste from local clipboard to remote"
-        >
-          <ClipboardCopy className="mr-1 h-4 w-4" />
-          Paste local
-        </Button>
+      <SessionToolButton title="Reconnect" onClick={onReconnect}>
+        <RefreshCw className="h-4 w-4" />
+      </SessionToolButton>
+      <SessionToolButton title="Disconnect" destructive onClick={onDisconnect}>
+        <LogOut className="h-4 w-4" />
+      </SessionToolButton>
 
-        {protocol === "rdp" && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 text-zinc-300"
-            onClick={onCtrlAltDel}
-            title="Send Ctrl+Alt+Del"
-          >
-            <Keyboard className="mr-1 h-4 w-4" />
-            Ctrl+Alt+Del
-          </Button>
-        )}
-
-        <span className="mx-1 h-5 w-px bg-zinc-700" />
-
-        {hasSshConnection && onToggleSsh && (
-          <Button
-            variant={sshOpen ? "secondary" : "ghost"}
-            size="sm"
-            className="h-8 text-zinc-300"
-            onClick={onToggleSsh}
-            title="SSH terminal split view"
-          >
-            <Terminal className="mr-1 h-4 w-4" />
-            SSH
-          </Button>
-        )}
-        {hasSshConnection && onTogglePortForward && (
-          <Button
-            variant={portForwardOpen ? "secondary" : "ghost"}
-            size="sm"
-            className="h-8 text-zinc-300"
-            onClick={onTogglePortForward}
-            title="Expose remote ports via SSH tunnel"
-          >
-            <Network className="mr-1 h-4 w-4" />
-            Ports
-          </Button>
-        )}
-
-        <span className="mx-1 h-5 w-px bg-zinc-700" />
-
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 text-zinc-300"
-          onClick={onReconnect}
-          title="Reconnect"
-        >
-          <RefreshCw className="mr-1 h-4 w-4" />
-          Reconnect
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 text-zinc-300"
-          onClick={onDisconnect}
-          title="Disconnect"
-        >
-          <LogOut className="mr-1 h-4 w-4" />
-          Disconnect
-        </Button>
-        </div>
-
-        <div className="relative ml-2 shrink-0" ref={helpRef}>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 text-zinc-400"
-            onClick={() => setHelpOpen((v) => !v)}
-            title="Shortcuts help"
-          >
-            <HelpCircle className="h-4 w-4" />
-          </Button>
-          {helpOpen && (
-            <div className="absolute right-0 top-full z-30 mt-1 w-72 rounded-md border border-zinc-700 bg-zinc-900 p-3 text-xs text-zinc-300 shadow-lg">
-              <p className="mb-2 font-medium text-zinc-100">Shortcuts & tips</p>
-              <ul className="space-y-1.5">
+      <div className="relative ml-0.5 shrink-0" ref={helpRef}>
+        <SessionToolButton title="Shortcuts help" onClick={() => setHelpOpen((v) => !v)}>
+          <HelpCircle className="h-4 w-4" />
+        </SessionToolButton>
+        {helpOpen && (
+          <div className="absolute right-0 top-full z-30 mt-1 w-72 rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground shadow-xl">
+            <p className="mb-2 font-medium text-foreground">Shortcuts & tips</p>
+            <ul className="space-y-1.5">
+              <li>
+                <strong className="text-foreground">Fit / 100%</strong> — scale the remote desktop to
+                the window or native resolution.
+              </li>
+              <li>
+                <strong className="text-foreground">Fullscreen</strong> — browser fullscreen on the
+                display area (F11 also works).
+              </li>
+              <li>
+                <strong className="text-foreground">Clipboard</strong> — type or paste text, then Send
+                to remote. Remote copies appear automatically.
+              </li>
+              <li>
+                <strong className="text-foreground">Paste local</strong> — reads your OS clipboard and
+                sends it to the remote session.
+              </li>
+              {protocol === "rdp" && (
                 <li>
-                  <strong>Fit / 100%</strong> — scale the remote desktop to the window or native
-                  resolution.
+                  <strong className="text-foreground">Ctrl+Alt+Del</strong> — opens the Windows
+                  security / login screen.
                 </li>
-                <li>
-                  <strong>Fullscreen</strong> — browser fullscreen on the display area (F11 also
-                  works).
-                </li>
-                <li>
-                  <strong>Clipboard</strong> — type or paste text, then Send to remote. Remote
-                  copies appear automatically.
-                </li>
-                <li>
-                  <strong>Paste local</strong> — reads your OS clipboard and sends it to the remote
-                  session.
-                </li>
-                {protocol === "rdp" && (
+              )}
+              {hasSshConnection && (
+                <>
                   <li>
-                    <strong>Ctrl+Alt+Del</strong> — opens the Windows security / login screen.
+                    <strong className="text-foreground">SSH</strong> — open a split-pane terminal to
+                    the same host via SSH.
                   </li>
-                )}
-                {hasSshConnection && (
-                  <>
-                    <li>
-                      <strong>SSH</strong> — open a split-pane terminal to the same host via SSH.
-                    </li>
-                    <li>
-                      <strong>Ports</strong> — expose remote services on your machine through an SSH
-                      tunnel.
-                    </li>
-                  </>
-                )}
-              </ul>
-            </div>
-          )}
-        </div>
+                  <li>
+                    <strong className="text-foreground">Ports</strong> — expose remote services on
+                    your machine through an SSH tunnel.
+                  </li>
+                </>
+              )}
+            </ul>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mt-3 h-7 w-full text-muted-foreground"
+              onClick={() => setHelpOpen(false)}
+            >
+              Close
+            </Button>
+          </div>
+        )}
       </div>
-    </div>
+    </>
   );
 }

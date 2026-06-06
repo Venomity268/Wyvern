@@ -604,7 +604,12 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
     }
 
     return (
-      <SessionLayout title={connectionName} subtitle={`SSH → ${hostname}`}>
+      <SessionLayout
+        title={connectionName}
+        protocol="ssh"
+        endpoint={hostname}
+        status={state === "connected" ? "connected" : state === "connecting" ? "connecting" : "disconnected"}
+      >
         {sessionBody}
       </SessionLayout>
     );

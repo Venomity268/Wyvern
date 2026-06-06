@@ -2,14 +2,17 @@
 
 import React, { useCallback, useState, useRef, useEffect, useMemo } from "react";
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle, type Layout } from "react-resizable-panels";
-import { X } from "lucide-react";
+import { X, Plus, Terminal, Keyboard } from "lucide-react";
 import { SessionLayout } from "@/components/SessionLayout";
 import { SplitPane } from "@/components/SplitPane";
 import {
   SshTerminal,
   type SshTerminalHandle,
 } from "@/components/SshTerminal";
-import { SshToolbar } from "@/components/SshToolbar";
+import { SshToolbar, SshPastePanel } from "@/components/SshToolbar";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { PortForwardPanel } from "@/components/PortForwardPanel";
 import { FileManagerPanel } from "@/components/file-manager/FileManagerPanel";
 import { DockerPanel } from "@/components/DockerPanel";
@@ -214,11 +217,12 @@ const PaneLayout = ({
     return (
       <div
         id={`pane-${node.id}`}
-        className={`relative w-full h-full flex flex-col min-w-0 min-h-0 rounded border-2 transition-colors duration-150 ${
-          isActive
-            ? "border-emerald-500 bg-zinc-950"
-            : "border-zinc-800 hover:border-zinc-700 bg-zinc-950"
-        }`}
+        className={cn(
+          "relative flex h-full min-h-0 w-full min-w-0 flex-col rounded-md border transition-colors duration-150",
+          isActive ?
+            "border-primary/35 bg-background shadow-[inset_0_0_0_1px_rgba(16,185,129,0.08)]"
+          : "border-border/60 bg-background/70 hover:border-border",
+        )}
         onClickCapture={() => setActivePaneId(node.id)}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
@@ -229,46 +233,57 @@ const PaneLayout = ({
           }
         }}
       >
-        {/* Pane Toolbar Header */}
         <div
-          className="flex items-center justify-between bg-zinc-900 px-2 py-1 text-[10px] text-zinc-400 select-none shrink-0 border-b border-zinc-800 hover:bg-zinc-850 transition-colors"
+          className={cn(
+            "flex shrink-0 select-none items-center justify-between border-b px-2 py-1 text-[10px] transition-colors",
+            isActive ?
+              "border-border bg-card/70 text-muted-foreground"
+            : "border-transparent bg-transparent text-muted",
+          )}
         >
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-zinc-650 font-bold select-none">⋮⋮</span>
-            <span className="truncate font-mono">
-              {node.componentType.toUpperCase()} ({node.title})
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="font-medium uppercase tracking-wide text-muted">
+              {node.componentType}
             </span>
+            {node.title !== node.componentType && (
+              <span className="truncate font-mono text-[10px] text-muted-foreground">
+                {node.title}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onSplit(node.id, "horizontal");
               }}
-              className="hover:text-zinc-200 text-[12px] leading-none"
-              title="Split Horizontally (Ctrl+B then %)"
+              className="leading-none hover:text-foreground"
+              title="Split horizontally"
             >
               ◧
             </button>
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onSplit(node.id, "vertical");
               }}
-              className="hover:text-zinc-200 text-[12px] leading-none"
-              title='Split Vertically (Ctrl+B then ")'
+              className="leading-none hover:text-foreground"
+              title="Split vertically"
             >
               ◫
             </button>
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onClosePane(node.id);
               }}
-              className="hover:text-red-400 text-red-500 font-bold font-mono"
-              title="Close Pane (Ctrl+B then x)"
+              className="font-mono text-destructive hover:text-destructive/80"
+              title="Close pane"
             >
-              ✕
+              <X className="h-3 w-3" />
             </button>
           </div>
         </div>
@@ -830,7 +845,7 @@ export function SshSessionViewer({
 
   if (!mounted) {
     return (
-      <div className="flex items-center justify-center h-full w-full bg-zinc-950 text-zinc-555 text-sm">
+      <div className="flex items-center justify-center h-full w-full bg-background text-muted text-sm">
         Loading session...
       </div>
     );
@@ -890,138 +905,146 @@ export function SshSessionViewer({
     },
   };
 
+  const sessionEndpoint = `${defaultUsername ? `${defaultUsername}@` : ""}${hostname}`;
+  const sessionStatus =
+    mainState.sessionState === "connected" ? "connected"
+    : mainState.sessionState === "connecting" ? "connecting"
+    : "disconnected";
+
+  const sessionToolbar =
+    isMainConnected ?
+      <SshToolbar
+        isFullscreen={isFullscreen}
+        clipboardOpen={clipboardOpen}
+        portForwardOpen={sidePanel === "ports" || portOverlay}
+        sftpOpen={sftpOpen}
+        dockerOpen={dockerOpen}
+        showPortForward={canPortForward}
+        onToggleFullscreen={toggleFullscreen}
+        onToggleClipboard={() => setClipboardOpen((v) => !v)}
+        onTogglePortForward={togglePortForward}
+        onToggleSftp={toggleSftp}
+        onToggleDocker={toggleDocker}
+        onReconnect={handleReconnect}
+        onDisconnect={handleDisconnect}
+        onFocusTerminal={() => activeTerminal?.focus()}
+      />
+    : undefined;
+
+  const sessionTabs =
+    isMainConnected ?
+      <>
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none">
+          {tabs.map((tab) => {
+            const isActive = tab.id === activeTabId;
+            return (
+              <div
+                key={tab.id}
+                onClick={() => setActiveTabId(tab.id)}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("text/tab-id", tab.id);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const draggedTabId = e.dataTransfer.getData("text/tab-id");
+                  const draggedPaneId = e.dataTransfer.getData("text/pane-id");
+                  const sourceTabId = e.dataTransfer.getData("text/source-tab-id");
+
+                  if (draggedTabId && draggedTabId !== tab.id) {
+                    reorderTabs(draggedTabId, tab.id);
+                  } else if (draggedPaneId && sourceTabId && sourceTabId !== tab.id) {
+                    movePaneToTab(draggedPaneId, sourceTabId, tab.id);
+                  }
+                }}
+                className={cn(
+                  "flex shrink-0 cursor-grab items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs transition-colors active:cursor-grabbing",
+                  isActive ?
+                    "border-primary/30 bg-primary/10 font-medium text-foreground"
+                  : "border-transparent bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
+                )}
+              >
+                <Terminal className="h-3 w-3 shrink-0" />
+                <span className="max-w-[8rem] truncate">{tab.title}</span>
+                {tab.id !== "main" && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleCloseTab(tab.id);
+                    }}
+                    className="rounded p-0.5 text-muted hover:text-foreground"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 shrink-0"
+            onClick={handleCreateNewTab}
+            title="New tab (Alt+Shift+N)"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {prefixActive ?
+            <Badge variant="success" className="animate-pulse font-mono text-[10px]">
+              Prefix active
+            </Badge>
+          : <span className="hidden font-mono text-[10px] text-muted sm:inline">Ctrl+B</span>}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 px-2 text-[11px] text-muted-foreground"
+            onClick={() => setShowShortcutsHelp((v) => !v)}
+          >
+            <Keyboard className="h-3 w-3" />
+            Shortcuts
+          </Button>
+        </div>
+      </>
+    : undefined;
+
   const sessionBody = (
-    <div ref={containerRef} className="relative flex h-full min-h-0 flex-1 flex-col bg-zinc-950">
-      {isMainConnected && (
-        <SshToolbar
-          isFullscreen={isFullscreen}
-          clipboardOpen={clipboardOpen}
-          portForwardOpen={sidePanel === "ports" || portOverlay}
-          sftpOpen={sftpOpen}
-          dockerOpen={dockerOpen}
-          showPortForward={canPortForward}
+    <div ref={containerRef} className="relative flex h-full min-h-0 flex-1 flex-col bg-background">
+      {clipboardOpen && isMainConnected && (
+        <SshPastePanel
           pasteText={pasteText}
-          onToggleFullscreen={toggleFullscreen}
-          onToggleClipboard={() => setClipboardOpen((v) => !v)}
-          onTogglePortForward={togglePortForward}
-          onToggleSftp={toggleSftp}
-          onToggleDocker={toggleDocker}
           onPasteTextChange={setPasteText}
           onSendPaste={() => {
             activeTerminal?.write(pasteText);
             setPasteText("");
+            setClipboardOpen(false);
           }}
-          onReconnect={handleReconnect}
-          onDisconnect={handleDisconnect}
-          onFocusTerminal={() => activeTerminal?.focus()}
+          onClose={() => setClipboardOpen(false)}
         />
       )}
 
-      <div className="relative min-h-0 flex-1 flex flex-col">
+      <div className="relative flex min-h-0 flex-1 flex-col">
         <SplitPane
           primary={
-            <div className="relative h-full min-h-0 flex-1 flex flex-col">
-              {/* Tab Bar */}
-              {isMainConnected && (
-                <div className="flex items-center justify-between bg-zinc-900 border-b border-zinc-850 px-3 py-1.5 overflow-x-auto shrink-0 select-none scrollbar-none gap-2">
-                  <div className="flex items-center gap-1.5">
-                    {tabs.map((tab) => {
-                      const isActive = tab.id === activeTabId;
-                      return (
-                        <div
-                          key={tab.id}
-                          onClick={() => {
-                            setActiveTabId(tab.id);
-                          }}
-                          draggable
-                          onDragStart={(e) => {
-                            e.dataTransfer.setData("text/tab-id", tab.id);
-                            e.dataTransfer.effectAllowed = "move";
-                          }}
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                          }}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            const draggedTabId = e.dataTransfer.getData("text/tab-id");
-                            const draggedPaneId = e.dataTransfer.getData("text/pane-id");
-                            const sourceTabId = e.dataTransfer.getData("text/source-tab-id");
-                            
-                            if (draggedTabId && draggedTabId !== tab.id) {
-                              reorderTabs(draggedTabId, tab.id);
-                            } else if (draggedPaneId && sourceTabId && sourceTabId !== tab.id) {
-                              movePaneToTab(draggedPaneId, sourceTabId, tab.id);
-                            }
-                          }}
-                          className={`flex items-center gap-1.5 px-3 py-1 text-xs rounded border cursor-pointer transition-colors shrink-0 ${
-                            isActive
-                              ? "bg-zinc-800 text-zinc-100 border-zinc-750 font-medium cursor-grab active:cursor-grabbing"
-                              : "bg-zinc-950/40 text-zinc-400 border-transparent hover:text-zinc-200 hover:bg-zinc-850/30 cursor-grab active:cursor-grabbing"
-                          }`}
-                        >
-                          <span>📁 {tab.title}</span>
-                          {tab.id !== "main" && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCloseTab(tab.id);
-                              }}
-                              className="text-zinc-550 hover:text-zinc-300 rounded p-0.5"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                    <button
-                      onClick={handleCreateNewTab}
-                      className="flex items-center justify-center p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 text-xs border border-zinc-800"
-                      title="New Tab (Alt+Shift+N)"
-                    >
-                      ➕
-                    </button>
-                  </div>
-
-                  {/* Status Pill and Help */}
-                  <div className="flex items-center gap-2 text-xs">
-                    {prefixActive ? (
-                      <span className="bg-emerald-950 text-emerald-300 border border-emerald-800 px-2.5 py-0.5 rounded-full text-[10px] font-semibold animate-pulse tracking-wide font-mono">
-                        ⌨ PREFIX ACTIVE
-                      </span>
-                    ) : (
-                      <span className="text-zinc-550 text-[10px] font-mono select-none">
-                        Prefix: Ctrl+B
-                      </span>
-                    )}
-                    <button
-                      onClick={() => setShowShortcutsHelp((v) => !v)}
-                      className="text-zinc-400 hover:text-zinc-200 border border-zinc-800 hover:bg-zinc-800 px-2 py-0.5 rounded text-[10px] font-medium"
-                    >
-                      ⌨ Shortcuts
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Keyboard shortcuts popup help */}
+            <div className="relative flex h-full min-h-0 flex-1 flex-col">
               {showShortcutsHelp && (
-                <div className="absolute top-10 right-3 z-50 w-72 rounded-lg border border-zinc-800 bg-zinc-900 p-3 shadow-xl text-xs space-y-2 text-zinc-300">
-                  <div className="flex items-center justify-between border-b border-zinc-800 pb-1.5 mb-1.5">
-                    <span className="font-semibold text-zinc-100">
-                      Keyboard Shortcuts (tmux style)
-                    </span>
+                <div className="absolute right-3 top-3 z-50 w-72 space-y-2 rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground shadow-xl">
+                  <div className="mb-1.5 flex items-center justify-between border-b border-border pb-1.5">
+                    <span className="font-semibold text-foreground">Keyboard shortcuts</span>
                     <button
+                      type="button"
                       onClick={() => setShowShortcutsHelp(false)}
-                      className="text-zinc-500 hover:text-zinc-300"
+                      className="text-muted hover:text-foreground"
                     >
-                      ✕
+                      <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
                   <div className="space-y-1 font-mono text-[11px]">
-                    <div className="text-emerald-400 font-semibold mb-1">
-                      Prefix key: Ctrl+B
-                    </div>
+                    <div className="mb-1 font-semibold text-primary">Prefix: Ctrl+B</div>
                     <div className="flex justify-between">
                       <span>Ctrl+B then %</span>{" "}
                       <span className="text-zinc-400">Split Horizontally</span>
@@ -1071,7 +1094,7 @@ export function SshSessionViewer({
               )}
 
               {/* Recursive Pane Tree Views for all tabs simultaneously */}
-              <div ref={viewportRef} className="relative flex-1 min-h-0 w-full flex flex-col p-1.5">
+              <div ref={viewportRef} className="relative flex min-h-0 w-full flex-1 flex-col p-1">
                 {tabs.map((tab) => {
                   const isActive = tab.id === activeTabId;
                   return (
@@ -1152,7 +1175,14 @@ export function SshSessionViewer({
   }
 
   return (
-    <SessionLayout title={connectionName} subtitle={`SSH → ${hostname}`}>
+    <SessionLayout
+      title={connectionName}
+      protocol="ssh"
+      endpoint={sessionEndpoint}
+      status={sessionStatus}
+      toolbar={sessionToolbar}
+      tabs={sessionTabs}
+    >
       {sessionBody}
     </SessionLayout>
   );

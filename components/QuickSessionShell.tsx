@@ -11,6 +11,7 @@ interface QuickSessionShellProps {
   subtitle: string;
   quickSessionId: string;
   hostname: string;
+  port?: number;
   protocol: string;
   workspaces: { id: string; name: string }[];
   children: React.ReactNode;
@@ -21,23 +22,23 @@ export function QuickSessionShell({
   subtitle,
   quickSessionId,
   hostname,
+  port,
   protocol,
   workspaces,
   children,
 }: QuickSessionShellProps) {
   const [saveOpen, setSaveOpen] = useState(false);
 
+  const protocolVariant =
+    protocol === "ssh" || protocol === "vnc" || protocol === "rdp" ? protocol : undefined;
+
   return (
     <SessionLayout
       title={title}
-      subtitle={subtitle}
+      protocol={protocolVariant}
+      endpoint={port ? `${hostname}:${port}` : hostname}
       actions={
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 text-zinc-300"
-          onClick={() => setSaveOpen(true)}
-        >
+        <Button variant="outline" size="sm" className="h-8" onClick={() => setSaveOpen(true)}>
           <BookmarkPlus className="mr-1 h-4 w-4" />
           Save connection
         </Button>

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Monitor, Terminal, MoreHorizontal, Pin, Plug } from "lucide-react";
 import type { ConnectionProtocol } from "@/lib/protocols";
 import type { HostMetricsSummary } from "@/lib/host-info/summary";
@@ -26,6 +27,7 @@ export interface ConnectionItem {
   protocol: ConnectionProtocol;
   methods?: ConnectionMethod[];
   workspace_id?: string;
+  workspace_name?: string | null;
   folder_id?: string | null;
   tags?: string | null;
   username?: string | null;
@@ -46,6 +48,7 @@ interface ConnectionListProps {
   layout?: "list" | "grid";
   workspaces?: WorkspaceOption[];
   pinnedIds?: Set<string>;
+  showWorkspaceName?: boolean;
   onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
   onMove?: (id: string, workspaceId: string) => Promise<void> | void;
@@ -71,6 +74,7 @@ function ConnectionCard({
   editable,
   workspaces,
   pinned,
+  showWorkspaceName,
   onEdit,
   onDelete,
   onMove,
@@ -81,6 +85,7 @@ function ConnectionCard({
   editable: boolean;
   workspaces: WorkspaceOption[];
   pinned?: boolean;
+  showWorkspaceName?: boolean;
   onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
   onMove?: (id: string, workspaceId: string) => Promise<void> | void;
@@ -114,7 +119,17 @@ function ConnectionCard({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="font-medium leading-snug text-foreground">{conn.name}</h3>
+            <div className="min-w-0">
+              <h3 className="font-medium leading-snug text-foreground">{conn.name}</h3>
+              {showWorkspaceName && conn.workspace_name && conn.workspace_id && (
+                <Link
+                  href={`/workspace/${conn.workspace_id}`}
+                  className="mt-1 inline-flex text-xs text-muted transition-colors hover:text-primary"
+                >
+                  {conn.workspace_name}
+                </Link>
+              )}
+            </div>
             {onTogglePin && (
               <Button
                 variant="ghost"
@@ -232,6 +247,7 @@ export function ConnectionList({
   layout = "grid",
   workspaces = [],
   pinnedIds,
+  showWorkspaceName = false,
   onEdit,
   onDelete,
   onMove,
@@ -259,6 +275,7 @@ export function ConnectionList({
           editable={editable}
           workspaces={workspaces}
           pinned={pinnedIds?.has(conn.id)}
+          showWorkspaceName={showWorkspaceName}
           onEdit={onEdit}
           onDelete={onDelete}
           onMove={onMove}

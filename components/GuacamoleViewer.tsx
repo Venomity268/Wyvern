@@ -657,51 +657,54 @@ export function GuacamoleViewer({
       </div>
     ) : null;
 
+  const sessionEndpoint = `${hostname}:${port}`;
+  const sessionStatus =
+    state === "connected" ? "connected"
+    : state === "connecting" ? "connecting"
+    : "disconnected";
+
+  const sessionToolbar =
+    state === "connected" ?
+      <DesktopToolbar
+        protocol={protocol}
+        zoomMode={zoomMode}
+        isFullscreen={isFullscreen}
+        clipboardOpen={clipboardOpen}
+        onZoomModeChange={setZoomMode}
+        onToggleFullscreen={toggleFullscreen}
+        onToggleClipboard={handleToggleClipboard}
+        onCopyLocalClipboard={handleCopyLocalClipboard}
+        onCtrlAltDel={handleCtrlAltDel}
+        onReconnect={handleReconnect}
+        onDisconnect={handleDisconnect}
+        sshOpen={sshOpen}
+        portForwardOpen={portForwardOpen}
+        onToggleSsh={hasSshAccess ? handleToggleSsh : undefined}
+        onTogglePortForward={hasSshAccess ? handleTogglePortForward : undefined}
+        hasSshConnection={hasSshAccess}
+      />
+    : undefined;
+
   const sessionBody = (
-    <div ref={sessionRef} className="relative flex h-full min-h-0 flex-1 flex-col bg-zinc-950">
+    <div ref={sessionRef} className="relative flex h-full min-h-0 flex-1 flex-col bg-background">
       {portWarning && state !== "auth" && (
-        <div className="border-b border-amber-900/50 bg-amber-950/40 px-4 py-2 text-sm text-amber-200">
+        <div className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-sm text-amber-200">
           {portWarning}
         </div>
       )}
 
-      {state === "connected" && (
-        <DesktopToolbar
-          protocol={protocol}
-          zoomMode={zoomMode}
-          isFullscreen={isFullscreen}
-          clipboardOpen={clipboardOpen}
-          remoteClipboard={remoteClipboard}
-          pasteText={pasteText}
-          onZoomModeChange={setZoomMode}
-          onToggleFullscreen={toggleFullscreen}
-          onToggleClipboard={handleToggleClipboard}
-          onPasteTextChange={setPasteText}
-          onSendToRemote={handleSendToRemote}
-          onCopyLocalClipboard={handleCopyLocalClipboard}
-          onCtrlAltDel={handleCtrlAltDel}
-          onReconnect={handleReconnect}
-          onDisconnect={handleDisconnect}
-          sshOpen={sshOpen}
-          portForwardOpen={portForwardOpen}
-          onToggleSsh={hasSshAccess ? handleToggleSsh : undefined}
-          onTogglePortForward={hasSshAccess ? handleTogglePortForward : undefined}
-          hasSshConnection={hasSshAccess}
-        />
-      )}
-
       {clipboardOpen && state === "connected" && (
-        <div className="pointer-events-none absolute inset-x-0 top-10 z-30 flex justify-center px-4">
+        <div className="pointer-events-none absolute inset-x-0 top-2 z-30 flex justify-center px-4">
           <div
             ref={clipboardOverlayRef}
-            className="pointer-events-auto w-full max-w-2xl rounded-lg border border-zinc-700 bg-zinc-900 p-4 shadow-xl"
+            className="pointer-events-auto w-full max-w-2xl rounded-lg border border-border bg-card p-4 shadow-xl"
           >
             <div className="mb-3 flex items-center justify-between">
-              <p className="text-sm font-medium text-zinc-100">Clipboard</p>
+              <p className="text-sm font-medium text-foreground">Clipboard</p>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 text-zinc-400"
+                className="h-7 text-muted-foreground"
                 onClick={() => setClipboardOpen(false)}
               >
                 <X className="h-4 w-4" />
@@ -709,26 +712,26 @@ export function GuacamoleViewer({
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
-                <p className="text-xs text-zinc-500">Send to remote</p>
+                <p className="text-xs text-muted">Send to remote</p>
                 <Textarea
                   value={pasteText}
                   onChange={(e) => setPasteText(e.target.value)}
                   placeholder="Paste or type text to send to the remote clipboard…"
                   rows={4}
-                  className="resize-none border-zinc-700 bg-zinc-800 font-mono text-sm text-zinc-100"
+                  className="resize-none font-mono text-sm"
                 />
                 <Button size="sm" onClick={handleSendToRemote} disabled={!pasteText.trim()}>
                   Send to remote
                 </Button>
               </div>
               <div className="space-y-1">
-                <p className="text-xs text-zinc-500">From remote</p>
+                <p className="text-xs text-muted">From remote</p>
                 <Textarea
                   readOnly
                   value={remoteClipboard}
                   placeholder="Remote clipboard content appears here…"
                   rows={4}
-                  className="resize-none border-zinc-700 bg-zinc-950 font-mono text-sm text-zinc-300"
+                  className="resize-none bg-background font-mono text-sm text-muted-foreground"
                 />
               </div>
             </div>
@@ -859,7 +862,13 @@ export function GuacamoleViewer({
   }
 
   return (
-    <SessionLayout title={connectionName} subtitle={`${protocolLabel} → ${hostname}:${port}`}>
+    <SessionLayout
+      title={connectionName}
+      protocol={protocol}
+      endpoint={sessionEndpoint}
+      status={sessionStatus}
+      toolbar={sessionToolbar}
+    >
       {sessionBody}
     </SessionLayout>
   );

@@ -3,17 +3,52 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { ArrowLeft } from "lucide-react";
 import { useIsMobile } from "@/lib/hooks/useIsMobile";
+import { cn } from "@/lib/utils";
+
+type SessionProtocol = "ssh" | "vnc" | "rdp";
 
 interface SessionLayoutProps {
   title: string;
-  subtitle?: string;
+  protocol?: SessionProtocol;
+  endpoint?: string;
+  status?: "connected" | "connecting" | "disconnected";
+  toolbar?: React.ReactNode;
+  tabs?: React.ReactNode;
   actions?: React.ReactNode;
   children: React.ReactNode;
 }
 
-export function SessionLayout({ title, subtitle, actions, children }: SessionLayoutProps) {
+function StatusDot({ status }: { status: SessionLayoutProps["status"] }) {
+  if (!status || status === "disconnected") return null;
+
+  return (
+    <span className="relative flex h-2 w-2 shrink-0">
+      {status === "connected" && (
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+      )}
+      <span
+        className={cn(
+          "relative inline-flex h-2 w-2 rounded-full",
+          status === "connected" ? "bg-emerald-400" : "bg-amber-400",
+        )}
+      />
+    </span>
+  );
+}
+
+export function SessionLayout({
+  title,
+  protocol,
+  endpoint,
+  status,
+  toolbar,
+  tabs,
+  actions,
+  children,
+}: SessionLayoutProps) {
   const [viewportHeight, setViewportHeight] = useState<string>("100vh");
   const isMobile = useIsMobile();
 
@@ -45,24 +80,50 @@ export function SessionLayout({ title, subtitle, actions, children }: SessionLay
 
   return (
     <div
-      className="flex flex-col bg-zinc-950 overflow-hidden"
+      className="flex flex-col overflow-hidden bg-background"
       style={{ height: viewportHeight }}
     >
-      <header className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-2 py-1.5 sm:px-4 sm:py-2">
-        <div className="flex items-center gap-3">
-          <Link href="/">
-            <Button variant="ghost" size="sm" className="text-zinc-300 px-2 sm:px-3">
-              <ArrowLeft className="h-4 w-4" />
-              <span className="hidden sm:inline">Back</span>
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-xs sm:text-sm font-medium text-zinc-100">{title}</h1>
-            {subtitle && <p className="hidden sm:block text-xs text-zinc-500">{subtitle}</p>}
-          </div>
+      <header className="flex shrink-0 items-center gap-2 border-b border-border bg-card/90 px-2 py-1.5 backdrop-blur-sm sm:gap-3 sm:px-3">
+        <Link href="/">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+            title="Back to dashboard"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        </Link>
+
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <StatusDot status={status} />
+          <h1 className="truncate text-sm font-semibold text-foreground">{title}</h1>
+          {protocol && (
+            <Badge variant={protocol} className="hidden shrink-0 uppercase sm:inline-flex">
+              {protocol}
+            </Badge>
+          )}
+          {endpoint && (
+            <span className="hidden min-w-0 truncate font-mono text-xs text-muted-foreground md:inline">
+              {endpoint}
+            </span>
+          )}
         </div>
-        {actions && <div className="flex items-center gap-2">{actions}</div>}
+
+        {(toolbar || actions) && (
+          <div className="flex max-w-[55vw] items-center gap-0.5 overflow-x-auto scrollbar-none sm:max-w-none">
+            {toolbar}
+            {actions}
+          </div>
+        )}
       </header>
+
+      {tabs && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-card/60 px-2 py-1 sm:px-3">
+          {tabs}
+        </div>
+      )}
+
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
     </div>
   );

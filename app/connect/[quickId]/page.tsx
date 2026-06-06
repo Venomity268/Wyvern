@@ -36,6 +36,7 @@ export default async function QuickConnectSessionPage({ params }: PageProps) {
         subtitle={subtitle}
         quickSessionId={quick.id}
         hostname={quick.hostname}
+        port={quick.port}
         protocol={quick.protocol}
         workspaces={workspaces}
       >
