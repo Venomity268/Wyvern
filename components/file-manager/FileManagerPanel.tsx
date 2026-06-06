@@ -11,6 +11,7 @@ import { FileBrowser } from "./FileBrowser";
 import { FileEditorPane } from "./FileEditorPane";
 import { SudoDialog } from "./SudoDialog";
 import { useFileManager } from "./hooks/useFileManager";
+import { useIsMobile } from "@/lib/hooks/useIsMobile";
 import type { SessionAuth } from "./hooks/useSftpClient";
 
 interface FileManagerPanelProps {
@@ -31,6 +32,7 @@ export function FileManagerPanel({
   onClose,
 }: FileManagerPanelProps) {
   const fm = useFileManager(connectionId, quickSessionId, hasStoredCredential, sessionAuth);
+  const isMobile = useIsMobile();
   const [username, setUsername] = useState(defaultUsername || sessionAuth?.username || "");
   const [password, setPassword] = useState("");
   const [privateKey, setPrivateKey] = useState("");
@@ -110,6 +112,8 @@ export function FileManagerPanel({
     );
   }
 
+  const showSecondary = !!fm.openFile;
+
   return (
     <div className="relative h-full min-h-0">
       <SplitPane
@@ -117,7 +121,10 @@ export function FileManagerPanel({
         initialRatio={0.4}
         minPrimary={160}
         minSecondary={200}
-        showSecondary
+        showSecondary={showSecondary}
+        isMobile={isMobile}
+        primaryTabLabel="Files"
+        secondaryTabLabel={fm.openFile?.name || "Editor"}
         primary={<FileBrowser fm={fm} onClose={onClose} />}
         secondary={
           <FileEditorPane

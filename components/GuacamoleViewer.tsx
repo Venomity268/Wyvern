@@ -18,6 +18,7 @@ import { installMouseHandlers } from "@/lib/guac/mouse";
 import { sendCtrlAltDel } from "@/lib/guac/rdp";
 import { useDisconnectOnLeave } from "@/lib/hooks/useDisconnectOnLeave";
 import { Loader2, X } from "lucide-react";
+import { useIsMobile } from "@/lib/hooks/useIsMobile";
 
 interface GuacamoleViewerProps {
   connectionId?: string;
@@ -89,6 +90,7 @@ export function GuacamoleViewer({
   const savedAuthRef = useRef<{ username: string; password: string }>({ username: "", password: "" });
   const resizeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const isMobile = useIsMobile();
   const [state, setState] = useState<ViewerState>(
     hasStoredCredential ? "connecting" : "auth",
   );
@@ -100,11 +102,18 @@ export function GuacamoleViewer({
   const [clipboardOpen, setClipboardOpen] = useState(false);
   const [sshOpen, setSshOpen] = useState(false);
   const [sshEverOpened, setSshEverOpened] = useState(false);
+  const [activeMobileTab, setActiveMobileTab] = useState<"desktop" | "ssh">("desktop");
   const [portForwardOpen, setPortForwardOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [remoteClipboard, setRemoteClipboard] = useState("");
 
   const protocolLabel = protocol.toUpperCase();
+
+  const [prevSshOpen, setPrevSshOpen] = useState(sshOpen);
+  if (sshOpen !== prevSshOpen) {
+    setPrevSshOpen(sshOpen);
+    setActiveMobileTab(sshOpen ? "ssh" : "desktop");
+  }
 
   const resetSidePanels = useCallback(() => {
     setSshOpen(false);
@@ -362,10 +371,14 @@ export function GuacamoleViewer({
   }, [zoomMode, relayoutAfterLayout, sendRemoteSize]);
 
   useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
     if (hasStoredCredential) {
-      connect();
+      timeout = setTimeout(() => {
+        connect();
+      }, 0);
     }
     return () => {
+      clearTimeout(timeout);
       connectAttemptRef.current += 1;
       teardownClient();
     };
@@ -574,148 +587,175 @@ export function GuacamoleViewer({
 
   const sessionBody = (
     <div ref={sessionRef} className="relative flex h-full flex-col bg-zinc-950">
-        {portWarning && state !== "auth" && (
-          <div className="border-b border-amber-900/50 bg-amber-950/40 px-4 py-2 text-sm text-amber-200">
-            {portWarning}
-          </div>
-        )}
+      {portWarning && state !== "auth" && (
+        <div className="border-b border-amber-900/50 bg-amber-950/40 px-4 py-2 text-sm text-amber-200">
+          {portWarning}
+        </div>
+      )}
 
-        {state === "connected" && (
-          <DesktopToolbar
-            protocol={protocol}
-            zoomMode={zoomMode}
-            isFullscreen={isFullscreen}
-            clipboardOpen={clipboardOpen}
-            remoteClipboard={remoteClipboard}
-            pasteText={pasteText}
-            onZoomModeChange={setZoomMode}
-            onToggleFullscreen={toggleFullscreen}
-            onToggleClipboard={handleToggleClipboard}
-            onPasteTextChange={setPasteText}
-            onSendToRemote={handleSendToRemote}
-            onCopyLocalClipboard={handleCopyLocalClipboard}
-            onCtrlAltDel={handleCtrlAltDel}
-            onReconnect={handleReconnect}
-            onDisconnect={handleDisconnect}
-            sshOpen={sshOpen}
-            portForwardOpen={portForwardOpen}
-            onToggleSsh={hasSshAccess ? handleToggleSsh : undefined}
-            onTogglePortForward={hasSshAccess ? handleTogglePortForward : undefined}
-            hasSshConnection={hasSshAccess}
-          />
-        )}
+      {state === "connected" && (
+        <DesktopToolbar
+          protocol={protocol}
+          zoomMode={zoomMode}
+          isFullscreen={isFullscreen}
+          clipboardOpen={clipboardOpen}
+          remoteClipboard={remoteClipboard}
+          pasteText={pasteText}
+          onZoomModeChange={setZoomMode}
+          onToggleFullscreen={toggleFullscreen}
+          onToggleClipboard={handleToggleClipboard}
+          onPasteTextChange={setPasteText}
+          onSendToRemote={handleSendToRemote}
+          onCopyLocalClipboard={handleCopyLocalClipboard}
+          onCtrlAltDel={handleCtrlAltDel}
+          onReconnect={handleReconnect}
+          onDisconnect={handleDisconnect}
+          sshOpen={sshOpen}
+          portForwardOpen={portForwardOpen}
+          onToggleSsh={hasSshAccess ? handleToggleSsh : undefined}
+          onTogglePortForward={hasSshAccess ? handleTogglePortForward : undefined}
+          hasSshConnection={hasSshAccess}
+        />
+      )}
 
-        {clipboardOpen && state === "connected" && (
-          <div className="pointer-events-none absolute inset-x-0 top-10 z-30 flex justify-center px-4">
-            <div
-              ref={clipboardOverlayRef}
-              className="pointer-events-auto w-full max-w-2xl rounded-lg border border-zinc-700 bg-zinc-900 p-4 shadow-xl"
-            >
-              <div className="mb-3 flex items-center justify-between">
-                <p className="text-sm font-medium text-zinc-100">Clipboard</p>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-zinc-400"
-                  onClick={() => setClipboardOpen(false)}
-                >
-                  <X className="h-4 w-4" />
+      {clipboardOpen && state === "connected" && (
+        <div className="pointer-events-none absolute inset-x-0 top-10 z-30 flex justify-center px-4">
+          <div
+            ref={clipboardOverlayRef}
+            className="pointer-events-auto w-full max-w-2xl rounded-lg border border-zinc-700 bg-zinc-900 p-4 shadow-xl"
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-sm font-medium text-zinc-100">Clipboard</p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-zinc-400"
+                onClick={() => setClipboardOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <p className="text-xs text-zinc-500">Send to remote</p>
+                <Textarea
+                  value={pasteText}
+                  onChange={(e) => setPasteText(e.target.value)}
+                  placeholder="Paste or type text to send to the remote clipboard…"
+                  rows={4}
+                  className="resize-none border-zinc-700 bg-zinc-800 font-mono text-sm text-zinc-100"
+                />
+                <Button size="sm" onClick={handleSendToRemote} disabled={!pasteText.trim()}>
+                  Send to remote
                 </Button>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <p className="text-xs text-zinc-500">Send to remote</p>
-                  <Textarea
-                    value={pasteText}
-                    onChange={(e) => setPasteText(e.target.value)}
-                    placeholder="Paste or type text to send to the remote clipboard…"
-                    rows={4}
-                    className="resize-none border-zinc-700 bg-zinc-800 font-mono text-sm text-zinc-100"
-                  />
-                  <Button size="sm" onClick={handleSendToRemote} disabled={!pasteText.trim()}>
-                    Send to remote
-                  </Button>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-zinc-500">From remote</p>
-                  <Textarea
-                    readOnly
-                    value={remoteClipboard}
-                    placeholder="Remote clipboard content appears here…"
-                    rows={4}
-                    className="resize-none border-zinc-700 bg-zinc-950 font-mono text-sm text-zinc-300"
-                  />
-                </div>
+              <div className="space-y-1">
+                <p className="text-xs text-zinc-500">From remote</p>
+                <Textarea
+                  readOnly
+                  value={remoteClipboard}
+                  placeholder="Remote clipboard content appears here…"
+                  rows={4}
+                  className="resize-none border-zinc-700 bg-zinc-950 font-mono text-sm text-zinc-300"
+                />
               </div>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {portForwardOpen && hasSshAccess && effectiveSshConnectionId && state === "connected" && (
-          <div className="pointer-events-none absolute inset-x-0 top-10 z-30 flex justify-center px-4">
-            <div
-              ref={portOverlayRef}
-              className="pointer-events-auto w-full max-w-2xl rounded-lg border border-zinc-700 bg-zinc-900 p-4 shadow-xl"
-            >
-              <PortForwardPanel
-                connectionId={effectiveSshConnectionId}
-                connectionName={effectiveSshConnectionName}
-                defaultUsername={sshDefaultUsername}
-                hasStoredCredential={sshHasStoredCredential}
-                remoteHostname={hostname}
-                onClose={() => setPortForwardOpen(false)}
-              />
-            </div>
+      {portForwardOpen && hasSshAccess && effectiveSshConnectionId && state === "connected" && (
+        <div className="pointer-events-none absolute inset-x-0 top-10 z-30 flex justify-center px-4">
+          <div
+            ref={portOverlayRef}
+            className="pointer-events-auto w-full max-w-2xl rounded-lg border border-zinc-700 bg-zinc-900 p-4 shadow-xl"
+          >
+            <PortForwardPanel
+              connectionId={effectiveSshConnectionId}
+              connectionName={effectiveSshConnectionName}
+              defaultUsername={sshDefaultUsername}
+              hasStoredCredential={sshHasStoredCredential}
+              remoteHostname={hostname}
+              onClose={() => setPortForwardOpen(false)}
+            />
           </div>
-        )}
+        </div>
+      )}
 
-        {showAuth && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center p-4">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                connect({ username, password });
-              }}
-              className="w-full max-w-md space-y-4 rounded-lg border border-zinc-800 bg-zinc-900 p-6"
-            >
-              <h2 className="text-lg font-medium text-zinc-100">{protocolLabel} Authentication</h2>
-              {portWarning && (
-                <p className="text-sm text-amber-300">{portWarning}</p>
-              )}
-              {needsUsername && (
-                <div className="space-y-2">
-                  <Label htmlFor="desktop-username" className="text-zinc-300">
-                    Username
-                  </Label>
-                  <Input
-                    id="desktop-username"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    required
-                    className="border-zinc-700 bg-zinc-800 text-zinc-100"
-                  />
-                </div>
-              )}
+      {showAuth && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center p-4">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              connect({ username, password });
+            }}
+            className="w-full max-w-md space-y-4 rounded-lg border border-zinc-800 bg-zinc-900 p-6"
+          >
+            <h2 className="text-lg font-medium text-zinc-100">{protocolLabel} Authentication</h2>
+            {portWarning && (
+              <p className="text-sm text-amber-300">{portWarning}</p>
+            )}
+            {needsUsername && (
               <div className="space-y-2">
-                <Label htmlFor="desktop-password" className="text-zinc-300">
-                  Password
+                <Label htmlFor="desktop-username" className="text-zinc-300">
+                  Username
                 </Label>
                 <Input
-                  id="desktop-password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  id="desktop-username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   required
                   className="border-zinc-700 bg-zinc-800 text-zinc-100"
                 />
               </div>
-              {error && <p className="text-sm text-red-400">{error}</p>}
-              <Button type="submit">Connect</Button>
-            </form>
-          </div>
-        )}
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="desktop-password" className="text-zinc-300">
+                Password
+              </Label>
+              <Input
+                id="desktop-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="border-zinc-700 bg-zinc-800 text-zinc-100"
+              />
+            </div>
+            {error && <p className="text-sm text-red-400">{error}</p>}
+            <Button type="submit">Connect</Button>
+          </form>
+        </div>
+      )}
 
-        <div className="relative flex min-h-0 flex-1 flex-col">
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {isMobile && !!sshOpen && hasSshAccess && sshEverOpened ? (
+          <div className="flex h-full flex-col min-h-0">
+            <div className="flex border-b border-zinc-800 bg-zinc-900/90 px-2 shrink-0">
+              <button
+                className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-colors ${activeMobileTab === "desktop"
+                    ? "border-emerald-500 text-emerald-400"
+                    : "border-transparent text-zinc-400 hover:text-zinc-200"
+                  }`}
+                onClick={() => setActiveMobileTab("desktop")}
+              >
+                Desktop
+              </button>
+              <button
+                className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-colors ${activeMobileTab === "ssh"
+                    ? "border-emerald-500 text-emerald-400"
+                    : "border-transparent text-zinc-400 hover:text-zinc-200"
+                  }`}
+                onClick={() => setActiveMobileTab("ssh")}
+              >
+                SSH Terminal
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 relative">
+              {activeMobileTab === "desktop" ? desktopView : sshPane}
+            </div>
+          </div>
+        ) : (
           <SplitPane
             direction="horizontal"
             initialRatio={0.68}
@@ -723,8 +763,9 @@ export function GuacamoleViewer({
             primary={desktopView}
             secondary={sshPane}
           />
-        </div>
+        )}
       </div>
+    </div>
   );
 
   if (chromeless) {

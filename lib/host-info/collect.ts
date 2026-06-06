@@ -82,9 +82,9 @@ elif command -v netstat >/dev/null 2>&1; then
 fi
 `.trim();
 
-function parseFloat(value: string | undefined): number | null {
+function parseFloatSafe(value: string | undefined): number | null {
   if (!value?.trim()) return null;
-  const n = parseFloat(value);
+  const n = Number.parseFloat(value);
   return Number.isFinite(n) ? n : null;
 }
 
@@ -104,8 +104,8 @@ function parseProcesses(lines: string[]): HostProcessInfo[] {
     processes.push({
       pid,
       user: parts[1] || "?",
-      cpu_pct: parseFloat(parts[2]) ?? 0,
-      mem_pct: parseFloat(parts[3]) ?? 0,
+      cpu_pct: parseFloatSafe(parts[2]) ?? 0,
+      mem_pct: parseFloatSafe(parts[3]) ?? 0,
       command: parts.slice(4).join("|") || "?",
     });
   }
@@ -183,10 +183,10 @@ export function parseCollectOutput(output: string): HostMetricsSnapshot {
     }
   }
 
-  const load1 = parseFloat(raw.LOAD1);
-  const load5 = parseFloat(raw.LOAD5);
-  const load15 = parseFloat(raw.LOAD15);
-  const diskTotalMb = parseFloat(raw.DISK_TOTAL_MB);
+  const load1 = parseFloatSafe(raw.LOAD1);
+  const load5 = parseFloatSafe(raw.LOAD5);
+  const load15 = parseFloatSafe(raw.LOAD15);
+  const diskTotalMb = parseFloatSafe(raw.DISK_TOTAL_MB);
 
   return {
     fqdn: raw.FQDN || null,
@@ -195,25 +195,25 @@ export function parseCollectOutput(output: string): HostMetricsSnapshot {
     kernel: raw.KERNEL || null,
     cpu_model: raw.CPU || null,
     cpu_count: parseIntSafe(raw.CPUS),
-    cpu_util_pct: parseFloat(raw.CPU_PCT),
+    cpu_util_pct: parseFloatSafe(raw.CPU_PCT),
     load_avg: load1 !== null && load5 !== null && load15 !== null ? [load1, load5, load15] : null,
     memory_total_mb: parseIntSafe(raw.MEM_TOTAL),
     memory_used_mb: parseIntSafe(raw.MEM_USED),
     memory_available_mb: parseIntSafe(raw.MEM_AVAIL),
-    memory_util_pct: parseFloat(raw.MEM_PCT),
+    memory_util_pct: parseFloatSafe(raw.MEM_PCT),
     disk_total_gb: diskTotalMb !== null ? Math.round((diskTotalMb / 1024) * 10) / 10 : null,
     disk_used_gb:
-      parseFloat(raw.DISK_USED_MB) !== null ?
-        Math.round((parseFloat(raw.DISK_USED_MB)! / 1024) * 10) / 10
+      parseFloatSafe(raw.DISK_USED_MB) !== null ?
+        Math.round((parseFloatSafe(raw.DISK_USED_MB)! / 1024) * 10) / 10
       : null,
     disk_available_gb:
-      parseFloat(raw.DISK_AVAIL_MB) !== null ?
-        Math.round((parseFloat(raw.DISK_AVAIL_MB)! / 1024) * 10) / 10
+      parseFloatSafe(raw.DISK_AVAIL_MB) !== null ?
+        Math.round((parseFloatSafe(raw.DISK_AVAIL_MB)! / 1024) * 10) / 10
       : null,
-    disk_util_pct: parseFloat(raw.DISK_PCT),
+    disk_util_pct: parseFloatSafe(raw.DISK_PCT),
     uptime_seconds: parseIntSafe(raw.UPTIME),
-    network_rx_mb: parseFloat(raw.NET_RX_MB),
-    network_tx_mb: parseFloat(raw.NET_TX_MB),
+    network_rx_mb: parseFloatSafe(raw.NET_RX_MB),
+    network_tx_mb: parseFloatSafe(raw.NET_TX_MB),
     processes: parseProcesses(procLines),
     user_services: parseServices(serviceLines),
     listening_ports: parsePorts(portLines),

@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   }
 
   const user = getDb()
-    .prepare("SELECT id, email, role, display_name FROM users WHERE email = ?")
+    .prepare("SELECT id, email, password_hash, role, display_name FROM users WHERE email = ?")
     .get(email) as {
     id: string;
     email: string;

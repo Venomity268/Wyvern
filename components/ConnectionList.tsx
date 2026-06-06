@@ -155,6 +155,7 @@ function ConnectionCard({
         connectionId={conn.id}
         connectionName={conn.name}
         hasSsh={hasSsh}
+        initialSummary={conn.host_info}
       />
 
       {editable && (

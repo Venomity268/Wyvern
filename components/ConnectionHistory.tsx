@@ -31,78 +31,78 @@ function HistoryTable({
   endingId?: string | null;
 }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-400">
-            <th className="px-4 py-3 font-medium">Name</th>
-            <th className="px-4 py-3 font-medium">Host</th>
-            <th className="px-4 py-3 font-medium">Protocol</th>
-            <th className="px-4 py-3 font-medium">Workspace</th>
-            <th className="px-4 py-3 font-medium">Started</th>
-            <th className="px-4 py-3 font-medium">Status</th>
-            {showActions && <th className="px-4 py-3 font-medium">Actions</th>}
-          </tr>
-        </thead>
-        <tbody className="bg-card">
-          {items.map((item) => (
-            <tr
-              key={item.id}
-              className="border-b border-border last:border-b-0 hover:bg-zinc-800/40"
-            >
-              <td className="px-4 py-3 font-medium text-foreground">
+    <div className="divide-y divide-border bg-card">
+      {items.map((item) => (
+        <div key={item.id} className="p-4 space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <h4 className="font-medium text-foreground text-sm truncate">
                 {item.connection_name || "—"}
-              </td>
-              <td className="px-4 py-3 text-zinc-300">{item.hostname || "—"}</td>
-              <td className="px-4 py-3 uppercase text-zinc-300">{item.protocol}</td>
-              <td className="px-4 py-3 text-zinc-300">{item.workspace_name || "—"}</td>
-              <td className="px-4 py-3 text-zinc-300">
-                {new Date(item.started_at + "Z").toLocaleString()}
-              </td>
-              <td className="px-4 py-3">
-                <span
-                  className={
-                    item.is_live
-                      ? "font-medium text-emerald-400"
-                      : item.status === "active"
-                        ? "font-medium text-amber-400"
-                        : item.status === "error"
-                          ? "font-medium text-red-400"
-                          : "text-zinc-400"
-                  }
-                >
-                  {item.is_live ? "live" : item.status}
-                </span>
-              </td>
-              {showActions && (
-                <td className="px-4 py-3">
-                  <div className="flex flex-wrap gap-2">
-                    {item.connection_id && (
-                      <Link
-                        href={`/session/${item.connection_id}?via=${item.protocol}`}
-                      >
-                        <Button size="sm" variant="outline">
-                          {item.is_live ? "Resume" : "Open"}
-                        </Button>
-                      </Link>
-                    )}
-                    {item.status === "active" && onEnd && (
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        disabled={endingId === item.id}
-                        onClick={() => onEnd(item.id)}
-                      >
-                        {endingId === item.id ? "Ending…" : "End"}
-                      </Button>
-                    )}
-                  </div>
-                </td>
+              </h4>
+              <p className="text-xs text-muted font-mono mt-0.5 break-all">
+                {item.hostname || "—"}
+              </p>
+            </div>
+            <span className="rounded bg-zinc-800 px-2 py-0.5 text-xs font-mono uppercase text-zinc-300 shrink-0">
+              {item.protocol}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+            <div className="space-y-0.5">
+              {item.workspace_name && (
+                <p>
+                  Workspace: <span className="text-zinc-300">{item.workspace_name}</span>
+                </p>
               )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              <p>
+                Started: {new Date(item.started_at + "Z").toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <span
+                className={
+                  item.is_live
+                    ? "font-medium text-emerald-400"
+                    : item.status === "active"
+                      ? "font-medium text-amber-400"
+                      : item.status === "error"
+                        ? "font-medium text-red-400"
+                        : "text-zinc-400"
+                }
+              >
+                {item.is_live ? "live" : item.status}
+              </span>
+            </div>
+          </div>
+
+          {showActions && (
+            <div className="flex gap-2 pt-1">
+              {item.connection_id && (
+                <Link
+                  href={`/session/${item.connection_id}?via=${item.protocol}`}
+                  className="flex-1 md:flex-initial"
+                >
+                  <Button size="sm" variant="outline" className="w-full md:w-auto h-9">
+                    {item.is_live ? "Resume" : "Open"}
+                  </Button>
+                </Link>
+              )}
+              {item.status === "active" && onEnd && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="flex-1 md:flex-initial h-9"
+                  disabled={endingId === item.id}
+                  onClick={() => onEnd(item.id)}
+                >
+                  {endingId === item.id ? "Ending…" : "End"}
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

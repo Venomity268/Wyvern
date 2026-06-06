@@ -21,8 +21,13 @@ export function PdfPreview({ content, encoding }: PdfPreviewProps) {
     const bytes = Uint8Array.from(atob(binary), (c) => c.charCodeAt(0));
     const blob = new Blob([bytes], { type: "application/pdf" });
     const objectUrl = URL.createObjectURL(blob);
-    setUrl(objectUrl);
-    return () => URL.revokeObjectURL(objectUrl);
+    const timeout = setTimeout(() => {
+      setUrl(objectUrl);
+    }, 0);
+    return () => {
+      clearTimeout(timeout);
+      URL.revokeObjectURL(objectUrl);
+    };
   }, [content, encoding]);
 
   if (!url) return null;

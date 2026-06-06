@@ -76,7 +76,10 @@ export default function WorkspacePage() {
   }, [workspaceId]);
 
   useEffect(() => {
-    load();
+    const timeout = setTimeout(() => {
+      void load();
+    }, 0);
+    return () => clearTimeout(timeout);
   }, [load]);
 
   async function saveConnection(data: ConnectionFormData) {
@@ -290,14 +293,14 @@ export default function WorkspacePage() {
               {members.map((m) => (
                 <li
                   key={m.user_id}
-                  className="flex items-center justify-between rounded border border-zinc-800 px-3 py-2 text-sm"
+                  className="flex items-center justify-between gap-3 rounded border border-zinc-800 px-3 py-2 text-sm min-w-0"
                 >
-                  <span>
-                    {m.email}{" "}
-                    <span className="text-zinc-500">({m.role})</span>
-                  </span>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="truncate" title={m.email}>{m.email}</span>
+                    <span className="text-zinc-500 shrink-0">({m.role})</span>
+                  </div>
                   {m.role !== "owner" && (
-                    <Button size="sm" variant="ghost" onClick={() => removeMember(m.user_id)}>
+                    <Button size="sm" variant="ghost" className="shrink-0" onClick={() => removeMember(m.user_id)}>
                       Remove
                     </Button>
                   )}
@@ -384,28 +387,34 @@ export default function WorkspacePage() {
             {credentials.map((c) => (
               <li
                 key={c.id}
-                className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/40 p-3"
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-900/40 p-3"
               >
-                <div>
-                  <span>{c.label}</span>
+                <div className="min-w-0">
+                  <span className="font-medium text-zinc-100 truncate block sm:inline">{c.label}</span>
                   {c.username && (
-                    <span className="ml-2 text-sm text-zinc-500">({c.username})</span>
+                    <span className="sm:ml-2 text-sm text-zinc-500 block sm:inline">({c.username})</span>
                   )}
-                  <span className="ml-2 text-xs text-zinc-600">
+                  <span className="sm:ml-2 text-xs text-zinc-600 block sm:inline mt-0.5 sm:mt-0">
                     {c.has_password ? "password" : ""}
                     {c.has_password && c.has_private_key ? " · " : ""}
                     {c.has_private_key ? "key" : ""}
                   </span>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 sm:justify-end w-full sm:w-auto shrink-0 border-t border-zinc-800/40 sm:border-0 pt-2 sm:pt-0">
                   <Button
                     size="sm"
                     variant="outline"
+                    className="flex-1 sm:flex-initial"
                     onClick={() => { setEditingCredId(c.id); setShowCredForm(true); }}
                   >
                     Edit
                   </Button>
-                  <Button size="sm" variant="destructive" onClick={() => deleteCredential(c.id)}>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="flex-1 sm:flex-initial"
+                    onClick={() => deleteCredential(c.id)}
+                  >
                     Delete
                   </Button>
                 </div>

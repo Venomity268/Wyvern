@@ -88,15 +88,19 @@ export function PortForwardPanel({
   useEffect(() => {
     if (mode !== "multiplexed") return;
 
-    if (shellWebSocket?.readyState === WebSocket.OPEN) {
-      setReady(true);
-      setConnecting(false);
-      setNeedsAuth(false);
-    } else {
-      setReady(false);
-    }
+    const timeout = setTimeout(() => {
+      if (shellWebSocket?.readyState === WebSocket.OPEN) {
+        setReady(true);
+        setConnecting(false);
+        setNeedsAuth(false);
+      } else {
+        setReady(false);
+      }
+    }, 0);
 
-    if (!shellWebSocket) return;
+    if (!shellWebSocket) {
+      return () => clearTimeout(timeout);
+    }
 
     const handler = (event: MessageEvent) => {
       const data =
@@ -107,7 +111,10 @@ export function PortForwardPanel({
     };
 
     shellWebSocket.addEventListener("message", handler);
-    return () => shellWebSocket.removeEventListener("message", handler);
+    return () => {
+      clearTimeout(timeout);
+      shellWebSocket.removeEventListener("message", handler);
+    };
   }, [handleForwardMessage, mode, shellWebSocket]);
 
   const connectTunnel = useCallback(

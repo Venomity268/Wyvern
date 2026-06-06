@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronRight, Loader2 } from "lucide-react";
 import type { HostMetricsDetail } from "@/lib/host-info/types";
+import type { HostMetricsSummary } from "@/lib/host-info/summary";
 import { HostMetricsDetailPanel } from "./HostMetricsDetailPanel";
 import { useHostMetricsPoller } from "./useHostMetricsPoller";
 import { formatRam, formatStorage, formatUptime, utilColor } from "./format";
@@ -11,6 +12,7 @@ interface HostMetricsCardSummaryProps {
   connectionId: string;
   connectionName: string;
   hasSsh: boolean;
+  initialSummary?: HostMetricsSummary | null;
 }
 
 function SummaryBar({ label, value, text }: { label: string; value: number | null | undefined; text: string }) {
@@ -35,13 +37,14 @@ export function HostMetricsCardSummary({
   connectionId,
   connectionName,
   hasSsh,
+  initialSummary,
 }: HostMetricsCardSummaryProps) {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detail, setDetail] = useState<HostMetricsDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
 
-  const { summary, loading, error, containerRef } = useHostMetricsPoller(connectionId, hasSsh);
+  const { summary, loading, error, containerRef } = useHostMetricsPoller(connectionId, hasSsh, initialSummary);
 
   const loadDetail = useCallback(async () => {
     setDetailLoading(true);
@@ -67,9 +70,14 @@ export function HostMetricsCardSummary({
 
   useEffect(() => {
     if (!detailOpen) return;
-    void loadDetail();
+    const timeout = setTimeout(() => {
+      void loadDetail();
+    }, 0);
     const interval = setInterval(() => void loadDetail(), 30_000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
   }, [detailOpen, loadDetail]);
 
   if (!hasSsh) return null;

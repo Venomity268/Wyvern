@@ -55,10 +55,24 @@ function buildEnv() {
   }
 
   if (process.platform === "win32") {
+    // Windows environment variables are case-insensitive, but copying process.env
+    // to a plain object makes it case-sensitive. Locate the active Path key.
+    const pathKey = Object.keys(env).find((k) => k.toUpperCase() === "PATH") || "Path";
+    const originalPath = env[pathKey] || "";
+
     for (const bin of WIN_OPENSSL_BIN) {
       if (!fs.existsSync(bin)) continue;
       const dir = path.dirname(bin);
-      env.PATH = `${dir};${env.PATH || ""}`;
+      env[pathKey] = `${dir};${originalPath}`;
+
+      // Clean up other case variations to prevent child processes from receiving
+      // duplicate conflicting keys which can break command resolution (e.g. certutil).
+      for (const k of Object.keys(env)) {
+        if (k.toUpperCase() === "PATH" && k !== pathKey) {
+          delete env[k];
+        }
+      }
+
       if (!env.OPENSSL_CONF) {
         for (const conf of WIN_OPENSSL_CONF) {
           if (fs.existsSync(conf)) {
@@ -173,8 +187,10 @@ Add a hosts entry (requires Administrator on Windows):
     Open http://127.0.0.1:3000
 
   Option 4 — use .localhost instead (no hosts edit):
-    set PORTLESS_TLD=localhost
-    npm run start:dev
+    PowerShell:
+      $env:PORTLESS_TLD="localhost"; npm run start:dev
+    CMD:
+      set PORTLESS_TLD=localhost && npm run start:dev
 `);
 }
 

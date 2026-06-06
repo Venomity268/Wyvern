@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 interface SplitPaneProps {
   direction?: "horizontal" | "vertical";
@@ -10,6 +10,9 @@ interface SplitPaneProps {
   primary: React.ReactNode;
   secondary: React.ReactNode;
   showSecondary: boolean;
+  isMobile?: boolean;
+  primaryTabLabel?: string;
+  secondaryTabLabel?: string;
 }
 
 export function SplitPane({
@@ -20,10 +23,14 @@ export function SplitPane({
   primary,
   secondary,
   showSecondary,
+  isMobile = false,
+  primaryTabLabel = "Primary",
+  secondaryTabLabel = "Secondary",
 }: SplitPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [ratio, setRatio] = useState(initialRatio);
   const draggingRef = useRef(false);
+  const [activeTab, setActiveTab] = useState<"primary" | "secondary">("primary");
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (!showSecondary) return;
@@ -59,11 +66,58 @@ export function SplitPane({
     draggingRef.current = false;
   }, []);
 
-  useEffect(() => {
-    if (!showSecondary) setRatio(initialRatio);
-  }, [showSecondary, initialRatio]);
+  const [prevShowSecondary, setPrevShowSecondary] = useState(showSecondary);
+
+  if (showSecondary !== prevShowSecondary) {
+    setPrevShowSecondary(showSecondary);
+    if (showSecondary) {
+      setActiveTab("secondary");
+    } else {
+      setActiveTab("primary");
+      setRatio(initialRatio);
+    }
+  }
 
   const isHorizontal = direction === "horizontal";
+
+  if (isMobile && showSecondary) {
+    return (
+      <div className="flex h-full flex-col min-h-0 w-full animate-fadeIn">
+        <div className="flex border-b border-zinc-800 bg-zinc-900/90 px-2 shrink-0">
+          <button
+            type="button"
+            className={`px-3 py-2 text-[11px] sm:px-4 sm:py-2.5 sm:text-xs font-semibold uppercase tracking-wider border-b-2 transition-colors ${
+              activeTab === "primary"
+                ? "border-emerald-500 text-emerald-400"
+                : "border-transparent text-zinc-400 hover:text-zinc-200"
+            }`}
+            onClick={() => setActiveTab("primary")}
+          >
+            {primaryTabLabel}
+          </button>
+          <button
+            type="button"
+            className={`px-3 py-2 text-[11px] sm:px-4 sm:py-2.5 sm:text-xs font-semibold uppercase tracking-wider border-b-2 transition-colors ${
+              activeTab === "secondary"
+                ? "border-emerald-500 text-emerald-400"
+                : "border-transparent text-zinc-400 hover:text-zinc-200"
+            }`}
+            onClick={() => setActiveTab("secondary")}
+          >
+            {secondaryTabLabel}
+          </button>
+        </div>
+        <div className="flex-1 min-h-0 relative">
+          <div className={`h-full w-full ${activeTab === "primary" ? "" : "hidden"}`}>
+            {primary}
+          </div>
+          <div className={`h-full w-full ${activeTab === "secondary" ? "" : "hidden"}`}>
+            {secondary}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

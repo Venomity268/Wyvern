@@ -17,7 +17,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { SessionLayout } from "@/components/SessionLayout";
 import { wsUrl } from "@/lib/utils";
 import { useDisconnectOnLeave } from "@/lib/hooks/useDisconnectOnLeave";
-import { createZmodemSentry, type ZmodemBridge } from "@/lib/zmodem/session";
 import { Loader2, X } from "lucide-react";
 
 interface SshConnectionInfo {
@@ -56,9 +55,8 @@ interface SshTerminalCoreProps {
 
 export interface SshTerminalHandle {
   disconnect: () => void;
+  focus: () => void;
   write: (text: string) => void;
-  getZmodemBridge: () => ZmodemBridge | null;
-  sendZmodemFile: (file: File) => Promise<void>;
 }
 
 function useTerminalDimensions(sizeContainerRef?: React.RefObject<HTMLElement | null>) {
@@ -100,8 +98,6 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
     const wsRef = useRef<WebSocket | null>(null);
     const connectGenRef = useRef(0);
     const intentionalCloseRef = useRef(false);
-    const zmodemRef = useRef<ReturnType<typeof createZmodemSentry> | null>(null);
-    const zmodemActiveRef = useRef(false);
     const receivedDataRef = useRef(false);
     const fallbackContainerRef = useRef<HTMLDivElement>(null);
     const containerRef = sizeContainerRef ?? fallbackContainerRef;
@@ -128,31 +124,11 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
       stateRef.current = state;
     }, [state]);
 
-    const getBridge = useCallback((): ZmodemBridge | null => {
-      const ws = wsRef.current;
-      if (!ws) return null;
-      return {
-        sendRaw: (data) => {
-          if (ws.readyState !== WebSocket.OPEN) return;
-          if (typeof data === "string") ws.send(data);
-          else ws.send(data);
-        },
-        sendControl: (payload) => {
-          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
-        },
-        writeTerminal: (data) => write(data),
-      };
-    }, [write]);
-
     const handleTerminalOutput = useCallback(
       (data: string | Uint8Array) => {
         receivedDataRef.current = true;
         setError("");
-        if (zmodemActiveRef.current && zmodemRef.current) {
-          zmodemRef.current.consume(data);
-        } else {
-          write(data);
-        }
+        write(data);
       },
       [write],
     );
@@ -222,13 +198,6 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
           else if (resolvedPassword) msg.password = resolvedPassword;
           ws.send(JSON.stringify(msg));
           onWebSocketReady?.(ws);
-
-          const bridge = getBridge();
-          if (bridge) {
-            zmodemRef.current = createZmodemSentry(bridge, (active) => {
-              zmodemActiveRef.current = active;
-            });
-          }
         };
 
         ws.onmessage = (event: MessageEvent) => {
@@ -285,7 +254,6 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
             setError("Connection closed");
           }
           wsRef.current = null;
-          zmodemRef.current = null;
         };
 
         ws.onerror = () => {
@@ -298,7 +266,6 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
         connectionId,
         quickSessionId,
         defaultUsername,
-        getBridge,
         getDimensions,
         handleTerminalOutput,
         onAuthenticated,
@@ -316,15 +283,18 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
     );
 
     useEffect(() => {
-      if (!connectionId && !quickSessionId) {
-        updateState("error");
-        setError("Connection target required");
-        return;
-      }
-      if (hasStoredCredential) {
-        connect();
-      }
+      const timeout = setTimeout(() => {
+        if (!connectionId && !quickSessionId) {
+          updateState("error");
+          setError("Connection target required");
+          return;
+        }
+        if (hasStoredCredential) {
+          connect();
+        }
+      }, 0);
       return () => {
+        clearTimeout(timeout);
         connectGenRef.current += 1;
         intentionalCloseRef.current = true;
         wsRef.current?.close();
@@ -354,7 +324,7 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
     }, [containerRef, fitTerminal]);
 
     const handleData = useCallback((data: string) => {
-      if (wsRef.current?.readyState === WebSocket.OPEN && !zmodemActiveRef.current) {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(new TextEncoder().encode(data));
       }
     }, []);
@@ -364,7 +334,6 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
       connectGenRef.current += 1;
       wsRef.current?.close();
       wsRef.current = null;
-      zmodemRef.current = null;
       onWebSocketClose?.();
       onDisconnect?.();
       updateState("auth");
@@ -381,18 +350,14 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
 
     useImperativeHandle(ref, () => ({
       disconnect,
+      focus: () => {
+        focus();
+      },
       write: (text: string) => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(text);
         }
         write(text);
-      },
-      getZmodemBridge: getBridge,
-      sendZmodemFile: async (file: File) => {
-        const bridge = getBridge();
-        if (bridge && zmodemRef.current) {
-          await zmodemRef.current.sendFile(file, bridge);
-        }
       },
     }));
 
@@ -497,7 +462,12 @@ export const SshTerminal = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
               </Button>
             </div>
           )}
-          <div className="min-h-0 flex-1 overflow-hidden">
+          <div
+            className="min-h-0 flex-1 overflow-hidden cursor-text"
+            onClick={() => {
+              focus();
+            }}
+          >
             <Terminal
               ref={termRef}
               onData={handleData}

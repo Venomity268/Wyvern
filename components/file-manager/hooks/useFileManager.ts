@@ -62,16 +62,12 @@ export function useFileManager(
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [viewMode, setViewModeState] = useState<ViewMode>("list");
+  const [viewMode, setViewModeState] = useState<ViewMode>(loadViewMode);
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [openFile, setOpenFile] = useState<OpenFile | null>(null);
   const [sudoPrompt, setSudoPrompt] = useState<(() => void) | null>(null);
   const [sudoResolver, setSudoResolver] = useState<((v: string | null) => void) | null>(null);
-
-  useEffect(() => {
-    setViewModeState(loadViewMode());
-  }, []);
 
   const setViewMode = useCallback((mode: ViewMode) => {
     setViewModeState(mode);
@@ -118,10 +114,13 @@ export function useFileManager(
 
   useEffect(() => {
     if (sftp.ready) {
-      setPath(sftp.cwd);
-      void refresh();
+      const timeout = setTimeout(() => {
+        setPath(sftp.cwd);
+        void refresh();
+      }, 0);
+      return () => clearTimeout(timeout);
     }
-  }, [sftp.ready]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sftp.ready, sftp.cwd, refresh]);
 
   const navigateTo = useCallback(
     async (target: string) => {

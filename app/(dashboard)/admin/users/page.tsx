@@ -28,7 +28,10 @@ export default function AdminUsersPage() {
   }, []);
 
   useEffect(() => {
-    load();
+    const timeout = setTimeout(() => {
+      void load();
+    }, 0);
+    return () => clearTimeout(timeout);
   }, [load]);
 
   async function createUser(e: React.FormEvent) {

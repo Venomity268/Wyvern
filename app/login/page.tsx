@@ -27,8 +27,14 @@ export default function LoginPage() {
     });
 
     if (!res.ok) {
-      const data = await res.json();
-      setError(data.error || "Login failed");
+      let errorMessage = "Login failed";
+      try {
+        const data = await res.json();
+        errorMessage = data.error || errorMessage;
+      } catch (err) {
+        errorMessage = `Login failed (${res.statusText || res.status})`;
+      }
+      setError(errorMessage);
       setLoading(false);
       return;
     }
@@ -38,7 +44,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-full items-center justify-center p-4">
+    <div className="flex flex-1 items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800">

@@ -80,7 +80,8 @@ export function DesktopToolbar({
 
   return (
     <div className="border-b border-zinc-800 bg-zinc-900/80">
-      <div className="flex flex-wrap items-center gap-1 px-2 py-1">
+      <div className="flex items-center justify-between px-2 py-1">
+        <div className="flex flex-1 flex-nowrap items-center gap-1 overflow-x-auto scrollbar-none whitespace-nowrap min-w-0 py-0.5">
         <Button
           variant={zoomMode === "fit" ? "secondary" : "ghost"}
           size="sm"
@@ -201,8 +202,9 @@ export function DesktopToolbar({
           <LogOut className="mr-1 h-4 w-4" />
           Disconnect
         </Button>
+        </div>
 
-        <div className="relative ml-auto" ref={helpRef}>
+        <div className="relative ml-2 shrink-0" ref={helpRef}>
           <Button
             variant="ghost"
             size="sm"

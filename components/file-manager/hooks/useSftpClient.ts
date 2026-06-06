@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { SftpClient, canAutoConnectSftp } from "@/lib/sftp/client";
 import type { SftpConnectParams } from "@/lib/sftp/protocol";
 
@@ -24,7 +24,7 @@ export function useSftpClient(
   hasStoredCredential: boolean,
   sessionAuth?: SessionAuth | null,
 ) {
-  const clientRef = useRef<SftpClient | null>(null);
+  const [client] = useState(() => new SftpClient());
   const [ready, setReady] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState("");
@@ -33,16 +33,10 @@ export function useSftpClient(
   );
   const [cwd, setCwd] = useState("/");
 
-  const getClient = useCallback(() => {
-    if (!clientRef.current) clientRef.current = new SftpClient();
-    return clientRef.current;
-  }, []);
-
   const connect = useCallback(
     async (auth?: Partial<SftpConnectParams>) => {
       setConnecting(true);
       setError("");
-      const client = getClient();
       try {
         const params: SftpConnectParams = {
           ...(quickSessionId ? { quickSessionId } : { connectionId: connectionId! }),
@@ -64,7 +58,7 @@ export function useSftpClient(
         setConnecting(false);
       }
     },
-    [connectionId, getClient, quickSessionId, sessionAuth],
+    [connectionId, client, quickSessionId, sessionAuth],
   );
 
   const withSudoRetry = useCallback(
@@ -75,25 +69,28 @@ export function useSftpClient(
         if (!isNeedsSudoError(err)) throw err;
         const password = await onNeedsSudo();
         if (!password) throw err;
-        await getClient().setSudoPassword(password);
+        await client.setSudoPassword(password);
         return fn();
       }
     },
-    [getClient],
+    [client],
   );
 
   useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
     if (canAutoConnectSftp(hasStoredCredential, sessionAuth)) {
-      void connect();
+      timeout = setTimeout(() => {
+        void connect();
+      }, 0);
     }
     return () => {
-      clientRef.current?.disconnect();
-      clientRef.current = null;
+      clearTimeout(timeout);
+      client.disconnect();
     };
-  }, [connectionId, quickSessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [connectionId, quickSessionId, client, connect, hasStoredCredential, sessionAuth]);
 
   return {
-    client: getClient(),
+    client,
     ready,
     connecting,
     error,

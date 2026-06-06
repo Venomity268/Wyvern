@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
-import { ChevronRight, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronRight, Loader2, MoreVertical } from "lucide-react";
 import type { SftpEntry } from "@/lib/sftp/protocol";
 import { FileContextMenu, isArchiveFile } from "./FileContextMenu";
 import { FileEntryIcon } from "./FileIcons";
 import { FileToolbar } from "./FileToolbar";
 import { PermissionsDialog } from "./PermissionsDialog";
+import { useIsMobile } from "@/lib/hooks/useIsMobile";
 import type { FileManagerState } from "./hooks/useFileManager";
 
 interface FileBrowserProps {
@@ -20,6 +21,21 @@ function formatDate(mtime?: number) {
 }
 
 export function FileBrowser({ fm, onClose }: FileBrowserProps) {
+  const isMobile = useIsMobile();
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+      const timeout = setTimeout(() => {
+        setIsTouchDevice(isTouch);
+      }, 0);
+      return () => clearTimeout(timeout);
+    }
+  }, []);
+
+  const shouldOpenOnSingleClick = isMobile || isTouchDevice;
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; entry: SftpEntry | null } | null>(null);
   const [renameTarget, setRenameTarget] = useState<SftpEntry | null>(null);
@@ -93,7 +109,7 @@ export function FileBrowser({ fm, onClose }: FileBrowserProps) {
         <button type="button" className="hover:text-zinc-200" onClick={() => void fm.navigateTo("/")}>
           /
         </button>
-        {breadcrumbParts.map((part, i) => (
+        {breadcrumbParts.map((part) => (
           <span key={part} className="flex items-center gap-1">
             <ChevronRight className="h-3 w-3" />
             <button
@@ -159,6 +175,7 @@ export function FileBrowser({ fm, onClose }: FileBrowserProps) {
                   </button>
                 </th>
                 <th className="hidden px-2 py-1 text-right font-normal lg:table-cell">Mode</th>
+                <th className="px-2 py-1 text-right font-normal"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/80">
@@ -168,8 +185,18 @@ export function FileBrowser({ fm, onClose }: FileBrowserProps) {
                   <tr
                     key={entry.filename}
                     className={`cursor-pointer hover:bg-zinc-800/40 ${isSelected ? "bg-zinc-800/60" : ""}`}
-                    onClick={(e) => fm.toggleSelect(entry.filename, e.ctrlKey || e.metaKey)}
-                    onDoubleClick={() => void fm.openEntry(entry)}
+                    onClick={(e) => {
+                      if (shouldOpenOnSingleClick) {
+                        void fm.openEntry(entry);
+                      } else {
+                        fm.toggleSelect(entry.filename, e.ctrlKey || e.metaKey);
+                      }
+                    }}
+                    onDoubleClick={() => {
+                      if (!shouldOpenOnSingleClick) {
+                        void fm.openEntry(entry);
+                      }
+                    }}
                     onContextMenu={(e) => handleContextMenu(e, entry)}
                   >
                     <td className="px-2 py-1.5">
@@ -187,6 +214,23 @@ export function FileBrowser({ fm, onClose }: FileBrowserProps) {
                     <td className="hidden px-2 py-1.5 text-right font-mono text-xs text-zinc-500 lg:table-cell">
                       {fm.modeToOctal(entry.attrs.mode)}
                     </td>
+                    <td className="px-2 py-1.5 text-right">
+                      <button
+                        type="button"
+                        className="p-1 rounded text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setContextMenu({
+                            x: rect.left,
+                            y: rect.bottom,
+                            entry,
+                          });
+                        }}
+                      >
+                        <MoreVertical className="h-3.5 w-3.5" />
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
@@ -197,19 +241,43 @@ export function FileBrowser({ fm, onClose }: FileBrowserProps) {
             {fm.entries.map((entry) => {
               const isSelected = fm.selected.has(entry.filename);
               return (
-                <button
+                <div
                   key={entry.filename}
-                  type="button"
-                  className={`flex flex-col items-center gap-1 rounded border p-2 text-center hover:bg-zinc-800/40 ${
-                    isSelected ? "border-sky-600 bg-zinc-800/60" : "border-transparent"
+                  className={`relative flex flex-col items-center gap-1 rounded border p-2 text-center hover:bg-zinc-800/40 cursor-pointer ${
+                    isSelected ? "border-sky-600 bg-zinc-800/60" : "border-zinc-800 bg-zinc-900/20"
                   }`}
-                  onClick={(e) => fm.toggleSelect(entry.filename, e.ctrlKey || e.metaKey)}
-                  onDoubleClick={() => void fm.openEntry(entry)}
+                  onClick={(e) => {
+                    if (shouldOpenOnSingleClick) {
+                      void fm.openEntry(entry);
+                    } else {
+                      fm.toggleSelect(entry.filename, e.ctrlKey || e.metaKey);
+                    }
+                  }}
+                  onDoubleClick={() => {
+                    if (!shouldOpenOnSingleClick) {
+                      void fm.openEntry(entry);
+                    }
+                  }}
                   onContextMenu={(e) => handleContextMenu(e, entry)}
                 >
-                  <FileEntryIcon entry={entry} className="h-8 w-8" />
-                  <span className="line-clamp-2 w-full text-xs text-zinc-200">{entry.filename}</span>
-                </button>
+                  <button
+                    type="button"
+                    className="absolute top-1 right-1 p-0.5 rounded text-zinc-500 hover:bg-zinc-850 hover:text-zinc-200"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      setContextMenu({
+                        x: rect.left,
+                        y: rect.bottom,
+                        entry,
+                      });
+                    }}
+                  >
+                    <MoreVertical className="h-3.5 w-3.5" />
+                  </button>
+                  <FileEntryIcon entry={entry} className="h-8 w-8 mt-2" />
+                  <span className="line-clamp-2 w-full text-xs text-zinc-200 mt-1">{entry.filename}</span>
+                </div>
               );
             })}
           </div>

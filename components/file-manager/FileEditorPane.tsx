@@ -10,11 +10,16 @@ import { Button } from "@/components/ui/button";
 import { SFTP_MAX_EDIT_BYTES, SFTP_WARN_BYTES } from "@/lib/sftp/protocol";
 import { languageExtension } from "./fileLang";
 import type { FileManagerState, OpenFile } from "./hooks/useFileManager";
+import dynamic from "next/dynamic";
 import { ImagePreview } from "./previews/ImagePreview";
-import { PdfPreview } from "./previews/PdfPreview";
 import { MediaPreview } from "./previews/MediaPreview";
 import { MarkdownPreview } from "./previews/MarkdownPreview";
 import { UnknownPreview } from "./previews/UnknownPreview";
+
+const PdfPreview = dynamic(
+  () => import("./previews/PdfPreview").then((mod) => mod.PdfPreview),
+  { ssr: false }
+);
 
 interface FileEditorPaneProps {
   fm: FileManagerState;
@@ -62,12 +67,16 @@ export function FileEditorPane({ fm, file, onClose }: FileEditorPaneProps) {
   }, [file, fm]);
 
   useEffect(() => {
-    if (file) void loadFile();
-    else {
-      setContent("");
-      setSavedContent("");
-      setError("");
-    }
+    const timeout = setTimeout(() => {
+      if (file) {
+        void loadFile();
+      } else {
+        setContent("");
+        setSavedContent("");
+        setError("");
+      }
+    }, 0);
+    return () => clearTimeout(timeout);
   }, [file, loadFile]);
 
   const handleSave = useCallback(async () => {
