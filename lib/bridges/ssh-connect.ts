@@ -4,7 +4,7 @@ import { getMethodPort, resolveSshMethodCredential } from "../db/connection-meth
 import { decryptSecret } from "../crypto/secrets";
 import { canViewConnection } from "../auth/access";
 import type { SessionUser } from "../auth/session-options";
-import { getOrCreateBastionKeypair } from "../ssh/ssh-keys";
+import { getOrCreateBastionKeypair, normalizePrivateKeyForSsh2 } from "../ssh/ssh-keys";
 
 export interface ResolvedSshConnection {
   connection: {
@@ -106,7 +106,7 @@ export function resolveSshConnection(
         password = decryptSecret(cred.encrypted_password);
       }
       if (cred.encrypted_private_key && !privateKey) {
-        privateKey = decryptSecret(cred.encrypted_private_key);
+        privateKey = normalizePrivateKeyForSsh2(decryptSecret(cred.encrypted_private_key));
       }
       if (cred.encrypted_passphrase) {
         passphrase = decryptSecret(cred.encrypted_passphrase);
@@ -124,6 +124,10 @@ export function resolveSshConnection(
 
   if (!password && !privateKey) {
     return { error: "Credentials required", needsAuth: true };
+  }
+
+  if (privateKey) {
+    privateKey = normalizePrivateKeyForSsh2(privateKey);
   }
 
   return {
@@ -148,7 +152,7 @@ export function connectSshClient(
   };
 
   if (resolved.privateKey) {
-    connectConfig.privateKey = resolved.privateKey;
+    connectConfig.privateKey = normalizePrivateKeyForSsh2(resolved.privateKey);
     if (resolved.passphrase) connectConfig.passphrase = resolved.passphrase;
   } else if (resolved.password) {
     connectConfig.password = resolved.password;
@@ -156,6 +160,10 @@ export function connectSshClient(
 
   client.on("ready", () => onReady(client));
   client.on("error", onError);
-  client.connect(connectConfig);
+  try {
+    client.connect(connectConfig);
+  } catch (err) {
+    onError(err instanceof Error ? err : new Error(String(err)));
+  }
   return client;
 }

@@ -9,18 +9,30 @@ interface RouteParams {
 
 /** End active sessions for a connection when the client navigates away. */
 export async function POST(_request: NextRequest, { params }: RouteParams) {
-  const user = await requireSession();
-  const { connectionId } = await params;
+  try {
+    const user = await requireSession();
+    const { connectionId } = await params;
 
-  closeLiveSessionsForConnection(user.id, connectionId);
+    if (!connectionId) {
+      return NextResponse.json({ error: "connectionId required" }, { status: 400 });
+    }
 
-  getDb()
-    .prepare(
-      `UPDATE connection_history
-       SET ended_at = datetime('now'), status = 'completed', error_message = 'Session closed'
-       WHERE user_id = ? AND connection_id = ? AND status = 'active'`,
-    )
-    .run(user.id, connectionId);
+    closeLiveSessionsForConnection(user.id, connectionId);
 
-  return NextResponse.json({ ok: true });
+    getDb()
+      .prepare(
+        `UPDATE connection_history
+         SET ended_at = datetime('now'), status = 'completed', error_message = 'Session closed'
+         WHERE user_id = ? AND connection_id = ? AND status = 'active'`,
+      )
+      .run(user.id, connectionId);
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    if (err instanceof Error && err.message === "Unauthorized") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    console.error("[history/end-connection]", err);
+    return NextResponse.json({ error: "Failed to end session" }, { status: 500 });
+  }
 }

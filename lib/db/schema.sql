@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS connection_methods (
   connection_id TEXT NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
   protocol TEXT NOT NULL CHECK (protocol IN ('ssh', 'vnc', 'rdp')),
   port INTEGER NOT NULL,
-  credential_id TEXT REFERENCES credentials(id) ON DELETE SET NULL,
+  credential_id TEXT,
   UNIQUE(connection_id, protocol)
 );
 

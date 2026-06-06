@@ -9,13 +9,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { defaultPort } from "@/lib/utils";
 import type { ConnectionProtocol } from "@/lib/protocols";
+import { PROTOCOL_LABELS } from "@/lib/protocols";
 import { Loader2, Zap } from "lucide-react";
 
-const PROTOCOLS: { id: ConnectionProtocol; label: string }[] = [
-  { id: "ssh", label: "SSH" },
-  { id: "vnc", label: "VNC" },
-  { id: "rdp", label: "RDP" },
-];
+const PROTOCOLS: ConnectionProtocol[] = ["ssh", "vnc", "rdp"];
 
 export function QuickConnectForm() {
   const router = useRouter();
@@ -102,19 +99,21 @@ export function QuickConnectForm() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label>Protocol</Label>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {PROTOCOLS.map((p) => (
                 <Button
-                  key={p.id}
+                  key={p}
                   type="button"
                   size="sm"
-                  variant={protocol === p.id ? "secondary" : "outline"}
-                  onClick={() => onProtocolChange(p.id)}
+                  variant={protocol === p ? "secondary" : "outline"}
+                  onClick={() => onProtocolChange(p)}
+                  title={PROTOCOL_LABELS[p].hint}
                 >
-                  {p.label}
+                  {PROTOCOL_LABELS[p].label}
                 </Button>
               ))}
             </div>
+            <p className="text-xs text-zinc-500">{PROTOCOL_LABELS[protocol].hint}</p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-[1fr_100px]">
@@ -143,7 +142,12 @@ export function QuickConnectForm() {
 
           <div className="space-y-1">
             <Label htmlFor="qc-user">
-              Username{protocol === "vnc" ? " (optional)" : ""}
+              Username
+              {protocol === "vnc"
+                ? " (optional on some VNC servers)"
+                : protocol === "ssh"
+                  ? " (Ubuntu login name)"
+                  : ""}
             </Label>
             <Input
               id="qc-user"

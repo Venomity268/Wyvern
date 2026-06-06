@@ -47,18 +47,39 @@ body {
 
 .ssh-terminal-host {
   position: relative;
-  width: 100%;
-  height: 100%;
+  display: flex;
   min-height: 0;
   flex: 1;
+  flex-direction: column;
 }
 
-.ssh-terminal-host > div,
-.ssh-terminal-host .xterm,
-.ssh-terminal-host .xterm-viewport,
-.ssh-terminal-host .xterm-screen {
-  width: 100% !important;
-  height: 100% !important;
+.ssh-terminal-host .wterm {
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+  flex: 1;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.ssh-terminal-host .wterm .term-row {
+  box-shadow: none;
+}
+
+.ssh-terminal-host .wterm .term-grid {
+  background: var(--term-bg);
+}
+
+.ssh-terminal-host .wterm.has-scrollback {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.ssh-terminal-host .wterm ::selection {
+  background: rgba(86, 156, 214, 0.45);
+  color: inherit;
 }
 
 * {

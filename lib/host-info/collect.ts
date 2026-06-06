@@ -1,5 +1,6 @@
 import { Client } from "ssh2";
 import type { ResolvedSshConnection } from "../bridges/ssh-connect";
+import { connectSshClient } from "../bridges/ssh-connect";
 import type {
   HostMetricsSnapshot,
   HostPortInfo,
@@ -285,17 +286,14 @@ function emptySnapshot(error: string): HostMetricsSnapshot {
 export async function collectHostInfoViaSsh(
   resolved: ResolvedSshConnection,
 ): Promise<HostMetricsSnapshot> {
-  const { connection, username, password, privateKey, passphrase } = resolved;
-
   return new Promise((resolve) => {
-    const client = new Client();
     const fail = (message: string) => {
-      client.end();
       resolve(emptySnapshot(message));
     };
 
-    client
-      .on("ready", () => {
+    connectSshClient(
+      resolved,
+      (client) => {
         void execScript(client, COLLECT_SCRIPT)
           .then(({ stdout, stderr, code }) => {
             client.end();
@@ -313,20 +311,13 @@ export async function collectHostInfoViaSsh(
             resolve(parsed);
           })
           .catch((err) => {
+            client.end();
             fail(err instanceof Error ? err.message : "Collection failed");
           });
-      })
-      .on("error", (err) => {
+      },
+      (err) => {
         fail(err.message || "SSH connection failed");
-      })
-      .connect({
-        host: connection.hostname,
-        port: connection.port,
-        username,
-        password,
-        privateKey,
-        passphrase,
-        readyTimeout: 15_000,
-      });
+      },
+    );
   });
 }

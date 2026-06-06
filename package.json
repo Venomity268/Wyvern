@@ -5,8 +5,9 @@
   "portless": "wterm-bastion",
   "scripts": {
     "predev": "node scripts/copy-wasm.js",
-    "dev": "tsx server.ts",
+    "dev": "node scripts/copy-wasm.js && tsx server.ts",
     "setup:portless": "node scripts/ensure-openssl.js trust",
+    "setup:guacd": "node scripts/setup-guacd.js",
     "sync:hosts": "node scripts/ensure-openssl.js sync-hosts",
     "start:dev": "node scripts/ensure-openssl.js",
     "prebuild": "node scripts/copy-wasm.js",

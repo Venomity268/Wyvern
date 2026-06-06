@@ -7,6 +7,18 @@ import { encryptGuacToken } from "@/lib/guac/token";
 import { getMethodPort, resolveGuacMethodCredential } from "@/lib/db/connection-methods";
 import { resolveQuickGuac } from "@/lib/quick-connect";
 import { defaultPort, type GuacProtocol } from "@/lib/protocols";
+import { guacRdpConnectionSettings } from "@/lib/guac/rdp-settings";
+import { resolveGuacdHostname } from "@/lib/guac/resolve-hostname";
+
+async function withGuacdHostname(
+  settings: Record<string, string | number | boolean>,
+): Promise<Record<string, string | number | boolean>> {
+  const hostname = settings.hostname;
+  if (typeof hostname !== "string") return settings;
+  const resolved = await resolveGuacdHostname(hostname);
+  if (resolved === hostname) return settings;
+  return { ...settings, hostname: resolved };
+}
 
 function guacDisplaySettings(width: number, height: number) {
   return {
@@ -48,30 +60,30 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const settings: Record<string, string | number | boolean> = {
-        hostname: resolved.hostname,
-        port: String(resolved.port),
-        password: resolved.password!,
-        ...guacDisplaySettings(displayWidth, displayHeight),
-      };
-
-      if (resolved.protocol === "rdp") {
-        settings.username = resolved.username!;
-        settings.security = "any";
-        settings["ignore-cert"] = true;
-        settings["enable-wallpaper"] = false;
-        settings["enable-font-smoothing"] = true;
-        settings["enable-mouse-hover"] = true;
-        settings["disable-copy"] = false;
-        settings["disable-paste"] = false;
-      }
+      const settings: Record<string, string | number | boolean> =
+        resolved.protocol === "rdp"
+          ? guacRdpConnectionSettings(displayWidth, displayHeight, {
+              hostname: resolved.hostname,
+              port: resolved.port,
+              username: resolved.username!,
+              password: resolved.password!,
+            })
+          : {
+              hostname: resolved.hostname,
+              port: String(resolved.port),
+              password: resolved.password!,
+              ...guacDisplaySettings(displayWidth, displayHeight),
+            };
 
       if (resolved.protocol === "vnc") {
         settings["clipboard-encoding"] = "UTF-8";
+        if (resolved.username) {
+          settings.username = resolved.username;
+        }
       }
 
       const token = encryptGuacToken({
-        connection: { type: resolved.protocol, settings },
+        connection: { type: resolved.protocol, settings: await withGuacdHostname(settings) },
         meta: {
           connectionId: null,
           quickSessionId: resolved.quickSessionId,
@@ -185,32 +197,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const settings: Record<string, string | number | boolean> = {
-      hostname: connection.hostname,
-      port: String(port),
-      password,
-      ...guacDisplaySettings(displayWidth, displayHeight),
-    };
-
-    if (protocol === "rdp") {
-      settings.username = username!;
-      settings.security = "any";
-      settings["ignore-cert"] = true;
-      settings["enable-wallpaper"] = false;
-      settings["enable-font-smoothing"] = true;
-      settings["enable-mouse-hover"] = true;
-      settings["disable-copy"] = false;
-      settings["disable-paste"] = false;
-    }
+    const settings: Record<string, string | number | boolean> =
+      protocol === "rdp"
+        ? guacRdpConnectionSettings(displayWidth, displayHeight, {
+            hostname: connection.hostname,
+            port,
+            username: username!,
+            password,
+          })
+        : {
+            hostname: connection.hostname,
+            port: String(port),
+            password,
+            ...guacDisplaySettings(displayWidth, displayHeight),
+          };
 
     if (protocol === "vnc") {
       settings["clipboard-encoding"] = "UTF-8";
+      if (username) {
+        settings.username = username;
+      }
     }
 
     const token = encryptGuacToken({
       connection: {
         type: protocol,
-        settings,
+        settings: await withGuacdHostname(settings),
       },
       meta: {
         connectionId: connection.id,

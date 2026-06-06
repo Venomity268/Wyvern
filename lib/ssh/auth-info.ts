@@ -18,6 +18,13 @@ export function sshAuthInfo(connection: {
     return { defaultUsername: connection.username, hasStoredCredential: false };
   }
 
+  if (credentialId === "__bastion__") {
+    return {
+      defaultUsername: connection.username,
+      hasStoredCredential: true,
+    };
+  }
+
   const cred = db
     .prepare(
       "SELECT username, encrypted_password, encrypted_private_key FROM credentials WHERE id = ?",

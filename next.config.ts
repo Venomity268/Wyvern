@@ -28,6 +28,7 @@ function extraDevOrigins(): string[] {
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["better-sqlite3", "ssh2"],
+  transpilePackages: ["@wterm/dom", "@wterm/react", "@wterm/ghostty"],
   allowedDevOrigins: [
     "wterm-bastion.cain",
     "*.cain",

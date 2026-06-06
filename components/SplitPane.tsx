@@ -125,7 +125,7 @@ export function SplitPane({
       className={`flex h-full min-h-0 flex-1 ${isHorizontal ? "flex-row" : "flex-col"}`}
     >
       <div
-        className="h-full min-h-0 min-w-0 overflow-hidden"
+        className="h-full min-h-0 min-w-0"
         style={
           isHorizontal
             ? { width: showSecondary ? `${ratio * 100}%` : "100%" }
@@ -147,7 +147,7 @@ export function SplitPane({
         onPointerCancel={onPointerUp}
       />
       <div
-        className={`min-h-0 min-w-0 overflow-hidden ${showSecondary ? "flex-1" : "hidden"}`}
+        className={`min-h-0 min-w-0 ${showSecondary ? "flex-1" : "hidden"}`}
       >
         {secondary}
       </div>

@@ -5,7 +5,7 @@ import path from "path";
 function convertPemToSsh(pemKey: string): string {
   const keyObject = crypto.createPublicKey(pemKey);
   const jwk = keyObject.export({ format: "jwk" }) as { n: string; e: string };
-  
+
   const n = Buffer.from(jwk.n, "base64url");
   const e = Buffer.from(jwk.e, "base64url");
 
@@ -20,13 +20,40 @@ function convertPemToSsh(pemKey: string): string {
   }
 
   const type = Buffer.from("ssh-rsa");
-  const sshKey = Buffer.concat([
-    writeField(type),
-    writeField(e),
-    writeField(n),
-  ]);
+  const sshKey = Buffer.concat([writeField(type), writeField(e), writeField(n)]);
 
   return `ssh-rsa ${sshKey.toString("base64")}`;
+}
+
+/** ssh2 only accepts PKCS#1 / OpenSSH / SEC1 PEM — not generic PKCS#8 (`BEGIN PRIVATE KEY`). */
+export function normalizePrivateKeyForSsh2(pem: string): string {
+  const trimmed = pem.trim();
+  if (!trimmed) return trimmed;
+
+  if (
+    trimmed.includes("BEGIN RSA PRIVATE KEY") ||
+    trimmed.includes("BEGIN OPENSSH PRIVATE KEY") ||
+    trimmed.includes("BEGIN EC PRIVATE KEY") ||
+    trimmed.includes("BEGIN DSA PRIVATE KEY")
+  ) {
+    return trimmed;
+  }
+
+  if (
+    trimmed.includes("BEGIN PRIVATE KEY") ||
+    trimmed.includes("BEGIN ENCRYPTED PRIVATE KEY")
+  ) {
+    const key = crypto.createPrivateKey(trimmed);
+    const type = key.asymmetricKeyType;
+    if (type === "rsa") {
+      return key.export({ type: "pkcs1", format: "pem" }) as string;
+    }
+    if (type === "ec") {
+      return key.export({ type: "sec1", format: "pem" }) as string;
+    }
+  }
+
+  return trimmed;
 }
 
 const KEYS_DIR = path.join(process.cwd(), "data", "keys");
@@ -39,8 +66,13 @@ export function getOrCreateBastionKeypair() {
   }
 
   if (fs.existsSync(PRIVATE_KEY_PATH) && fs.existsSync(PUBLIC_KEY_PATH)) {
+    const rawPrivate = fs.readFileSync(PRIVATE_KEY_PATH, "utf8");
+    const privateKey = normalizePrivateKeyForSsh2(rawPrivate);
+    if (privateKey !== rawPrivate) {
+      fs.writeFileSync(PRIVATE_KEY_PATH, privateKey, { mode: 0o600 });
+    }
     return {
-      privateKey: fs.readFileSync(PRIVATE_KEY_PATH, "utf8"),
+      privateKey,
       publicKey: fs.readFileSync(PUBLIC_KEY_PATH, "utf8"),
     };
   }
@@ -52,7 +84,7 @@ export function getOrCreateBastionKeypair() {
       format: "pem",
     },
     privateKeyEncoding: {
-      type: "pkcs8",
+      type: "pkcs1",
       format: "pem",
     },
   });

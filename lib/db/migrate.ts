@@ -9,6 +9,7 @@ export function runMigrations(db: Database.Database) {
   migrateUserProfile(db);
   migrateConnectionMethods(db);
   migrateConnectionMethodCredentials(db);
+  migrateConnectionMethodsDropCredentialFk(db);
   migratePinnedConnections(db);
   migrateQuickSessions(db);
   migrateQuickSessionHistory(db);
@@ -157,14 +158,35 @@ function migratePinnedConnections(db: Database.Database) {
   `);
 }
 
+function migrateConnectionMethodsDropCredentialFk(db: Database.Database) {
+  const sql = tableSql(db, "connection_methods");
+  if (!sql || !sql.includes("REFERENCES credentials")) return;
+
+  db.exec(`
+    BEGIN;
+    CREATE TABLE connection_methods_new (
+      id TEXT PRIMARY KEY,
+      connection_id TEXT NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
+      protocol TEXT NOT NULL CHECK (protocol IN ('ssh', 'vnc', 'rdp')),
+      port INTEGER NOT NULL,
+      credential_id TEXT,
+      UNIQUE(connection_id, protocol)
+    );
+    INSERT INTO connection_methods_new (id, connection_id, protocol, port, credential_id)
+      SELECT id, connection_id, protocol, port, credential_id FROM connection_methods;
+    DROP TABLE connection_methods;
+    ALTER TABLE connection_methods_new RENAME TO connection_methods;
+    CREATE INDEX IF NOT EXISTS idx_connection_methods_conn ON connection_methods(connection_id);
+    COMMIT;
+  `);
+}
+
 function migrateConnectionMethodCredentials(db: Database.Database) {
   const sql = tableSql(db, "connection_methods");
   if (!sql) return;
 
   if (!sql.includes("credential_id")) {
-    db.exec(
-      "ALTER TABLE connection_methods ADD COLUMN credential_id TEXT REFERENCES credentials(id) ON DELETE SET NULL",
-    );
+    db.exec("ALTER TABLE connection_methods ADD COLUMN credential_id TEXT");
   }
 
   db.exec(`

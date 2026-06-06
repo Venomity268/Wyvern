@@ -18,8 +18,8 @@ Requires **Node.js 24+** and **Docker** (for guacd).
 cp .env.example .env
 # Edit .env — set SESSION_SECRET, CREDENTIAL_ENCRYPTION_KEY, and GUAC_TOKEN_SECRET (32+ chars each)
 
-# Start guacd (required for VNC)
-docker run --name guacd -d -p 4822:4822 guacamole/guacd
+# Start guacd (required for VNC and RDP)
+npm run setup:guacd
 
 npm install
 npm run predev

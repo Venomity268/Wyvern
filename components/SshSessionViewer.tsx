@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useState, useRef, useEffect } from "react";
+import React, { useCallback, useState, useRef, useEffect, useMemo } from "react";
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle, type Layout } from "react-resizable-panels";
 import { X } from "lucide-react";
 import { SessionLayout } from "@/components/SessionLayout";
@@ -8,19 +8,47 @@ import { SplitPane } from "@/components/SplitPane";
 import {
   SshTerminal,
   type SshTerminalHandle,
-  type SshConnectionState,
 } from "@/components/SshTerminal";
 import { SshToolbar } from "@/components/SshToolbar";
 import { PortForwardPanel } from "@/components/PortForwardPanel";
 import { FileManagerPanel } from "@/components/file-manager/FileManagerPanel";
 import { DockerPanel } from "@/components/DockerPanel";
 import { useIsMobile } from "@/lib/hooks/useIsMobile";
+import { usePreventBackspaceNavigation } from "@/lib/hooks/usePreventBackspaceNavigation";
+import { useDisconnectOnLeave } from "@/lib/hooks/useDisconnectOnLeave";
 import {
   useSessionStore,
   type LayoutNode,
-  type TerminalTab,
   collectAllIds,
+  collectTerminalLeaves,
 } from "@/lib/store/sessionStore";
+
+interface PaneRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+interface PaneSessionProps {
+  connectionId?: string;
+  quickSessionId?: string;
+  connectionName: string;
+  hostname: string;
+  defaultUsername?: string | null;
+  hasStoredCredential: boolean;
+  terminalRefs: React.RefObject<Map<string, SshTerminalHandle>>;
+  sessionCredentials: {
+    username: string;
+    password?: string;
+    privateKey?: string;
+  } | null;
+  updateTabState: (id: string, state: Record<string, unknown>) => void;
+  clearTabState: (id: string) => void;
+  resetSidePanels: () => void;
+  onDockerAttach: (paneId: string, containerId: string, containerName: string) => void;
+  onTerminalSlotMount: (paneId: string, el: HTMLDivElement | null) => void;
+}
 
 interface SshSessionViewerProps {
   connectionId?: string;
@@ -45,11 +73,33 @@ function findPaneIdByType(node: LayoutNode, type: "terminal" | "docker" | "files
   return null;
 }
 
-// Wrapper for direct rendering of SshTerminal inside leaf node Panels
-const PaneTerminalWrapper = ({
+function PaneTerminalSlot({
+  paneId,
+  onMount,
+}: {
+  paneId: string;
+  onMount: (paneId: string, el: HTMLDivElement | null) => void;
+}) {
+  const onMountRef = useRef(onMount);
+  onMountRef.current = onMount;
+
+  useEffect(() => {
+    return () => onMountRef.current(paneId, null);
+  }, [paneId]);
+
+  const ref = useCallback(
+    (el: HTMLDivElement | null) => {
+      onMountRef.current(paneId, el);
+    },
+    [paneId],
+  );
+
+  return <div ref={ref} className="flex-1 min-h-0 min-w-0" data-terminal-slot={paneId} />;
+}
+
+const StableTerminalInstance = React.memo(function StableTerminalInstance({
   paneId,
   execCommand,
-  paneVisible,
   terminalRefs,
   connectionId,
   quickSessionId,
@@ -60,11 +110,9 @@ const PaneTerminalWrapper = ({
   updateTabState,
   clearTabState,
   resetSidePanels,
-  reconnectKey,
 }: {
   paneId: string;
   execCommand?: string;
-  paneVisible: boolean;
   terminalRefs: React.RefObject<Map<string, SshTerminalHandle>>;
   connectionId?: string;
   quickSessionId?: string;
@@ -72,14 +120,12 @@ const PaneTerminalWrapper = ({
   hostname: string;
   defaultUsername?: string | null;
   hasStoredCredential: boolean;
-  updateTabState: (id: string, state: any) => void;
+  updateTabState: (id: string, state: Record<string, unknown>) => void;
   clearTabState: (id: string) => void;
   resetSidePanels: () => void;
-  reconnectKey: number;
-}) => {
+}) {
   return (
     <SshTerminal
-      key={`${paneId}-${reconnectKey}`}
       ref={(el) => {
         if (el) {
           terminalRefs.current?.set(paneId, el);
@@ -96,7 +142,8 @@ const PaneTerminalWrapper = ({
       execCommand={execCommand}
       variant="embedded"
       chromeless
-      paneVisible={paneVisible}
+      paneVisible
+      reportSessionEnd={paneId === "main"}
       onStateChange={(state) => {
         updateTabState(paneId, { sessionState: state });
       }}
@@ -118,49 +165,17 @@ const PaneTerminalWrapper = ({
       }}
     />
   );
-};
+});
 
-const PanePlaceholder = ({
-  id,
-  onRectChange,
-}: {
-  id: string;
-  onRectChange: (id: string, rect: DOMRect | null, el: HTMLDivElement) => void;
-}) => {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-
-    const observer = new ResizeObserver(() => {
-      const rect = el.getBoundingClientRect();
-      onRectChange(id, rect, el);
-    });
-
-    observer.observe(el);
-    // Initial measurement
-    onRectChange(id, el.getBoundingClientRect(), el);
-
-    return () => {
-      observer.disconnect();
-      onRectChange(id, null, el);
-    };
-  }, [id, onRectChange]);
-
-  return <div ref={ref} id={`placeholder-${id}`} className="w-full h-full relative" />;
-};
-
-// Recursive layout renderer mapping LayoutNode branch/leaf tree
 const PaneLayout = ({
   node,
   activePaneId,
   setActivePaneId,
   onSplit,
   onClosePane,
-  onRectChange,
   activeTabId,
   mergeTab,
+  session,
 }: {
   node: LayoutNode;
   activePaneId: string;
@@ -173,17 +188,32 @@ const PaneLayout = ({
     componentType?: "terminal" | "docker" | "files"
   ) => void;
   onClosePane: (targetId: string) => void;
-  onRectChange: (id: string, rect: DOMRect | null, el: HTMLDivElement) => void;
   activeTabId: string;
   mergeTab: (sourceTabId: string, targetTabId: string, targetPaneId?: string) => void;
+  session: PaneSessionProps;
 }) => {
   const updateSplitSizes = useSessionStore((state) => state.updateSplitSizes);
+  const reconnectKey = useSessionStore((state) => state.reconnectKey);
+
+  const branchChildIds =
+    node.type === "branch" ? node.children.map((child) => child.id).join(",") : "";
+  const branchId = node.type === "branch" ? node.id : "";
+  const defaultLayout = useMemo((): Layout | undefined => {
+    if (node.type !== "branch") return undefined;
+    const layout: Layout = {};
+    node.children.forEach((child, index) => {
+      layout[child.id] = node.sizes?.[index] ?? 100 / node.children.length;
+    });
+    return layout;
+    // Intentionally omit node.sizes — layout is owned by PanelGroup after mount.
+  }, [branchId, branchChildIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (node.type === "leaf") {
     const isActive = node.id === activePaneId;
 
     return (
       <div
+        id={`pane-${node.id}`}
         className={`relative w-full h-full flex flex-col min-w-0 min-h-0 rounded border-2 transition-colors duration-150 ${
           isActive
             ? "border-emerald-500 bg-zinc-950"
@@ -244,8 +274,37 @@ const PaneLayout = ({
         </div>
 
         {/* Active Component Core */}
-        <div className="flex-1 min-h-0 relative">
-          <PanePlaceholder id={node.id} onRectChange={onRectChange} />
+        <div className="flex-1 min-h-0 relative flex flex-col">
+          {node.componentType === "terminal" && (
+            <PaneTerminalSlot
+              paneId={node.id}
+              onMount={session.onTerminalSlotMount}
+            />
+          )}
+          {node.componentType === "files" && (
+            <FileManagerPanel
+              key={`files-${session.connectionId || session.quickSessionId}-${reconnectKey}-${node.id}`}
+              connectionId={session.connectionId}
+              quickSessionId={session.quickSessionId}
+              defaultUsername={session.defaultUsername}
+              hasStoredCredential={session.hasStoredCredential}
+              sessionAuth={session.sessionCredentials}
+              onClose={() => onClosePane(node.id)}
+            />
+          )}
+          {node.componentType === "docker" && (
+            session.connectionId ? (
+              <DockerPanel
+                connectionId={session.connectionId}
+                onAttachTerminal={(containerId, containerName) => {
+                  session.onDockerAttach(node.id, containerId, containerName);
+                }}
+                onClose={() => onClosePane(node.id)}
+              />
+            ) : (
+              <div className="p-4 text-zinc-400 text-xs font-mono">Docker requires a saved connection.</div>
+            )
+          )}
         </div>
       </div>
     );
@@ -255,8 +314,10 @@ const PaneLayout = ({
 
   return (
     <PanelGroup
+      id={node.id}
       orientation={direction}
       className="h-full w-full"
+      defaultLayout={defaultLayout}
       onLayoutChanged={(layout: Layout) => {
         const sizes = node.children.map(
           (child) => layout[child.id] ?? (node.sizes?.[node.children.indexOf(child)] ?? 100 / node.children.length)
@@ -265,26 +326,24 @@ const PaneLayout = ({
       }}
     >
       {node.children.flatMap((child, index) => {
-        const defaultSize = node.sizes?.[index] ?? 100 / node.children.length;
-
         const result = [
-          <Panel key={child.id} id={child.id} defaultSize={defaultSize} minSize={10}>
+          <Panel key={child.id} id={child.id} minSize={10}>
             <PaneLayout
               node={child}
               activePaneId={activePaneId}
               setActivePaneId={setActivePaneId}
               onSplit={onSplit}
               onClosePane={onClosePane}
-              onRectChange={onRectChange}
               activeTabId={activeTabId}
               mergeTab={mergeTab}
+              session={session}
             />
-          </Panel>
+          </Panel>,
         ];
 
         if (index < node.children.length - 1) {
           result.push(
-            <div
+            <PanelResizeHandle
               key={`${child.id}-resize`}
               className={`bg-zinc-900 shrink-0 ${
                 direction === "horizontal"
@@ -318,6 +377,9 @@ export function SshSessionViewer({
   const terminalRefs = useRef<Map<string, SshTerminalHandle>>(new Map());
   const containerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const slotElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const slotObserversRef = useRef<Map<string, ResizeObserver>>(new Map());
+  const [paneRects, setPaneRects] = useState<Record<string, PaneRect>>({});
   const isMobile = useIsMobile();
 
   // Central store layout selectors
@@ -331,91 +393,119 @@ export function SshSessionViewer({
   const activePaneId = useSessionStore((state) => state.activePaneId);
   const tabStates = useSessionStore((state) => state.tabStates);
   const reconnectKey = useSessionStore((state) => state.reconnectKey);
- 
-  const collectAllPanesFromTree = useCallback((node: LayoutNode): Array<{
-    id: string;
-    componentType: "terminal" | "docker" | "files";
-    title: string;
-    execCommand?: string;
-  }> => {
-    if (node.type === "leaf") {
-      return [{
-        id: node.id,
-        componentType: node.componentType,
-        title: node.title,
-        execCommand: node.execCommand,
-      }];
-    }
-    return node.children.flatMap(collectAllPanesFromTree);
-  }, []);
- 
-  const allPanes = tabs.flatMap((tab) => collectAllPanesFromTree(tab.layout));
- 
-  const setActiveTabId = useSessionStore((state) => state.setActiveTabId);
 
-  const [paneRects, setPaneRects] = useState<Record<string, DOMRect>>({});
-  const activeElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const terminalPanes = useMemo(
+    () =>
+      tabs.flatMap((tab) =>
+        collectTerminalLeaves(tab.layout).map((pane) => ({ ...pane, tabId: tab.id })),
+      ),
+    [tabs],
+  );
 
-  const handleRectChange = useCallback((id: string, rect: DOMRect | null, el: HTMLDivElement) => {
-    if (!rect) {
-      if (activeElementsRef.current.get(id) === el) {
-        activeElementsRef.current.delete(id);
-        setPaneRects((prev) => {
-          if (!(id in prev)) return prev;
-          const next = { ...prev };
-          delete next[id];
-          return next;
-        });
-      }
-      return;
-    }
+  const updatePaneRect = useCallback((paneId: string) => {
+    const el = slotElementsRef.current.get(paneId);
+    const viewport = viewportRef.current;
+    if (!el || !viewport) return;
 
-    activeElementsRef.current.set(id, el);
+    const slotRect = el.getBoundingClientRect();
+    const vpRect = viewport.getBoundingClientRect();
+    const next: PaneRect = {
+      left: slotRect.left - vpRect.left,
+      top: slotRect.top - vpRect.top,
+      width: slotRect.width,
+      height: slotRect.height,
+    };
 
     setPaneRects((prev) => {
-      const existing = prev[id];
+      const current = prev[paneId];
       if (
-        existing &&
-        existing.left === rect.left &&
-        existing.top === rect.top &&
-        existing.width === rect.width &&
-        existing.height === rect.height
+        current &&
+        current.left === next.left &&
+        current.top === next.top &&
+        current.width === next.width &&
+        current.height === next.height
       ) {
         return prev;
       }
-      return { ...prev, [id]: rect };
+      return { ...prev, [paneId]: next };
     });
   }, []);
 
-  const getTerminalStyle = (termId: string) => {
-    const rect = paneRects[termId];
-    const parent = viewportRef.current?.getBoundingClientRect();
+  const handleTerminalSlotMount = useCallback(
+    (paneId: string, el: HTMLDivElement | null) => {
+      const existingObserver = slotObserversRef.current.get(paneId);
+      if (existingObserver) {
+        existingObserver.disconnect();
+        slotObserversRef.current.delete(paneId);
+      }
 
-    if (!rect || !parent) {
-      return {
-        position: "absolute" as const,
-        left: 0,
-        top: 0,
-        width: 0,
-        height: 0,
-        visibility: "hidden" as const,
-        pointerEvents: "none" as const,
-        opacity: 0,
-      };
-    }
+      if (!el) {
+        slotElementsRef.current.delete(paneId);
+        setPaneRects((prev) => {
+          if (!(paneId in prev)) return prev;
+          const next = { ...prev };
+          delete next[paneId];
+          return next;
+        });
+        return;
+      }
 
-    return {
-      position: "absolute" as const,
-      left: rect.left - parent.left,
-      top: rect.top - parent.top,
-      width: rect.width,
-      height: rect.height,
-      visibility: "visible" as const,
-      pointerEvents: "auto" as const,
-      opacity: 1,
-      zIndex: 10,
+      slotElementsRef.current.set(paneId, el);
+      const observer = new ResizeObserver(() => updatePaneRect(paneId));
+      observer.observe(el);
+      slotObserversRef.current.set(paneId, observer);
+      updatePaneRect(paneId);
+    },
+    [updatePaneRect],
+  );
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const observer = new ResizeObserver(() => {
+      slotElementsRef.current.forEach((_, paneId) => updatePaneRect(paneId));
+    });
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [updatePaneRect]);
+
+  useEffect(() => {
+    return () => {
+      slotObserversRef.current.forEach((observer) => observer.disconnect());
+      slotObserversRef.current.clear();
     };
-  };
+  }, []);
+
+  const getTerminalOverlayStyle = useCallback(
+    (paneId: string, tabId: string): React.CSSProperties => {
+      const rect = paneRects[paneId];
+      const isActiveTab = tabId === activeTabId;
+      if (!rect || !isActiveTab || rect.width < 2 || rect.height < 2) {
+        return {
+          position: "absolute",
+          left: 0,
+          top: 0,
+          width: 0,
+          height: 0,
+          visibility: "hidden",
+          pointerEvents: "none",
+        };
+      }
+      return {
+        position: "absolute",
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        visibility: "visible",
+        pointerEvents: "auto",
+      };
+    },
+    [activeTabId, paneRects],
+  );
+
+  const setActiveTabId = useSessionStore((state) => state.setActiveTabId);
   const setActivePaneId = useSessionStore((state) => state.setActivePaneId);
   const updateTabState = useSessionStore((state) => state.updateTabState);
   const clearTabState = useSessionStore((state) => state.clearTabState);
@@ -531,6 +621,26 @@ export function SshSessionViewer({
     setPortOverlay(false);
   };
 
+  const disconnectOnLeave = useCallback(() => {
+    for (const term of terminalRefs.current.values()) {
+      term.closeSocket();
+    }
+    terminalRefs.current.clear();
+    if (quickSessionId) {
+      void fetch(`/api/history/end-quick/${quickSessionId}`, {
+        method: "POST",
+        keepalive: true,
+      });
+    } else if (connectionId) {
+      void fetch(`/api/history/end-connection/${connectionId}`, {
+        method: "POST",
+        keepalive: true,
+      });
+    }
+  }, [connectionId, quickSessionId]);
+
+  useDisconnectOnLeave(disconnectOnLeave);
+
   const handleReconnect = () => {
     setSidePanel("none");
     setPortOverlay(false);
@@ -591,7 +701,7 @@ export function SshSessionViewer({
 
     const boxes = termIds
       .map((id) => {
-        const el = document.getElementById(`placeholder-${id}`);
+        const el = document.getElementById(`pane-${id}`);
         if (!el) return null;
         const rect = el.getBoundingClientRect();
         return { id, rect };
@@ -716,6 +826,8 @@ export function SshSessionViewer({
     };
   }, [isMainConnected, prefixActive, tabs, activeTabId, activePaneId]);
 
+  usePreventBackspaceNavigation(isMainConnected);
+
   if (!mounted) {
     return (
       <div className="flex items-center justify-center h-full w-full bg-zinc-950 text-zinc-555 text-sm">
@@ -759,8 +871,27 @@ export function SshSessionViewer({
   const sftpOpen = activeComponentType === "files";
   const dockerOpen = activeComponentType === "docker";
 
+  const paneSession: PaneSessionProps = {
+    connectionId,
+    quickSessionId,
+    connectionName,
+    hostname,
+    defaultUsername,
+    hasStoredCredential,
+    terminalRefs,
+    sessionCredentials,
+    updateTabState,
+    clearTabState,
+    resetSidePanels,
+    onTerminalSlotMount: handleTerminalSlotMount,
+    onDockerAttach: (paneId, containerId, containerName) => {
+      const execCommand = `docker exec -it ${containerId} bash || sudo docker exec -it ${containerId} bash || docker exec -it ${containerId} sh || sudo docker exec -it ${containerId} sh`;
+      handleSplit(paneId, "horizontal", execCommand, `Exec: ${containerName}`);
+    },
+  };
+
   const sessionBody = (
-    <div ref={containerRef} className="relative flex h-full flex-col bg-zinc-950">
+    <div ref={containerRef} className="relative flex h-full min-h-0 flex-1 flex-col bg-zinc-950">
       {isMainConnected && (
         <SshToolbar
           isFullscreen={isFullscreen}
@@ -786,7 +917,7 @@ export function SshSessionViewer({
         />
       )}
 
-      <div ref={viewportRef} className="relative min-h-0 flex-1 flex flex-col">
+      <div className="relative min-h-0 flex-1 flex flex-col">
         <SplitPane
           primary={
             <div className="relative h-full min-h-0 flex-1 flex flex-col">
@@ -940,7 +1071,7 @@ export function SshSessionViewer({
               )}
 
               {/* Recursive Pane Tree Views for all tabs simultaneously */}
-              <div className="flex-1 min-h-0 w-full flex flex-col p-1.5">
+              <div ref={viewportRef} className="relative flex-1 min-h-0 w-full flex flex-col p-1.5">
                 {tabs.map((tab) => {
                   const isActive = tab.id === activeTabId;
                   return (
@@ -951,13 +1082,39 @@ export function SshSessionViewer({
                         setActivePaneId={setActivePaneId}
                         onSplit={handleSplit}
                         onClosePane={handleClosePane}
-                        onRectChange={handleRectChange}
                         activeTabId={activeTabId}
                         mergeTab={mergeTab}
+                        session={paneSession}
                       />
                     </div>
                   );
                 })}
+
+                {/* Stable terminal pool — survives split/merge layout restructures */}
+                <div className="absolute inset-0 pointer-events-none">
+                  {terminalPanes.map((pane) => (
+                    <div
+                      key={`${pane.id}-${reconnectKey}`}
+                      style={getTerminalOverlayStyle(pane.id, pane.tabId)}
+                      className="absolute flex min-h-0 min-w-0 flex-col select-text"
+                    >
+                      <StableTerminalInstance
+                        paneId={pane.id}
+                        execCommand={pane.execCommand}
+                        terminalRefs={terminalRefs}
+                        connectionId={connectionId}
+                        quickSessionId={quickSessionId}
+                        connectionName={connectionName}
+                        hostname={hostname}
+                        defaultUsername={defaultUsername}
+                        hasStoredCredential={hasStoredCredential}
+                        updateTabState={updateTabState}
+                        clearTabState={clearTabState}
+                        resetSidePanels={resetSidePanels}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           }
@@ -986,68 +1143,6 @@ export function SshSessionViewer({
           </div>
         )}
 
-        {/* Flat Overlays Layer */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden select-none z-10">
-          {allPanes.map((pane) => {
-            const style = getTerminalStyle(pane.id);
-            const isActiveTab = tabs.find((t) => t.id === activeTabId)
-              ? collectAllIds(tabs.find((t) => t.id === activeTabId)!.layout).includes(pane.id)
-              : false;
-            const isPaneVisible = isActiveTab && style.visibility === "visible";
-
-            return (
-              <div
-                key={pane.id}
-                style={style}
-                className="absolute overflow-hidden"
-              >
-                {pane.componentType === "terminal" && (
-                  <PaneTerminalWrapper
-                    paneId={pane.id}
-                    execCommand={pane.execCommand}
-                    paneVisible={isPaneVisible}
-                    terminalRefs={terminalRefs}
-                    connectionId={connectionId}
-                    quickSessionId={quickSessionId}
-                    connectionName={connectionName}
-                    hostname={hostname}
-                    defaultUsername={defaultUsername}
-                    hasStoredCredential={hasStoredCredential}
-                    updateTabState={updateTabState}
-                    clearTabState={clearTabState}
-                    resetSidePanels={resetSidePanels}
-                    reconnectKey={reconnectKey}
-                  />
-                )}
-                {pane.componentType === "files" && (
-                  <FileManagerPanel
-                    key={`files-${connectionId || quickSessionId}-${reconnectKey}-${pane.id}`}
-                    connectionId={connectionId}
-                    quickSessionId={quickSessionId}
-                    defaultUsername={defaultUsername}
-                    hasStoredCredential={hasStoredCredential}
-                    sessionAuth={sessionCredentials}
-                    onClose={() => handleClosePane(pane.id)}
-                  />
-                )}
-                {pane.componentType === "docker" && (
-                  connectionId ? (
-                    <DockerPanel
-                      connectionId={connectionId}
-                      onAttachTerminal={(containerId, containerName) => {
-                        const execCommand = `docker exec -it ${containerId} bash || sudo docker exec -it ${containerId} bash || docker exec -it ${containerId} sh || sudo docker exec -it ${containerId} sh`;
-                        handleSplit(pane.id, "horizontal", execCommand, `Exec: ${containerName}`);
-                      }}
-                      onClose={() => handleClosePane(pane.id)}
-                    />
-                  ) : (
-                    <div className="p-4 text-zinc-400 text-xs font-mono">Docker requires a saved connection.</div>
-                  )
-                )}
-              </div>
-            );
-          })}
-        </div>
       </div>
     </div>
   );

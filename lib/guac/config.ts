@@ -46,5 +46,12 @@ export function getGuacClientOptions() {
       cypher: "AES-256-CBC",
       key: getGuacEncryptionKey(),
     },
+    connectionDefaultSettings: {
+      rdp: {
+        port: "3389",
+        security: "any",
+        "ignore-cert": true,
+      },
+    },
   };
 }

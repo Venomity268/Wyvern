@@ -122,15 +122,39 @@ export function collectAllIds(node: LayoutNode): string[] {
   return node.children.flatMap(collectAllIds);
 }
 
+export interface TerminalPaneInfo {
+  id: string;
+  title: string;
+  execCommand?: string;
+}
+
+export function collectTerminalLeaves(node: LayoutNode): TerminalPaneInfo[] {
+  if (node.type === "leaf") {
+    if (node.componentType !== "terminal") return [];
+    return [{ id: node.id, title: node.title, execCommand: node.execCommand }];
+  }
+  return node.children.flatMap(collectTerminalLeaves);
+}
+
+function splitSizesEqual(a: number[] | undefined, b: number[]): boolean {
+  if (!a || a.length !== b.length) return false;
+  return a.every((value, index) => Math.abs(value - b[index]) < 0.01);
+}
+
 function updateSplitSizesInTree(node: LayoutNode, branchId: string, sizes: number[]): LayoutNode {
   if (node.type === "leaf") return node;
   if (node.id === branchId) {
+    if (splitSizesEqual(node.sizes, sizes)) return node;
     return { ...node, sizes };
   }
-  return {
-    ...node,
-    children: node.children.map((child) => updateSplitSizesInTree(child, branchId, sizes)),
-  };
+  let changed = false;
+  const children = node.children.map((child) => {
+    const next = updateSplitSizesInTree(child, branchId, sizes);
+    if (next !== child) changed = true;
+    return next;
+  });
+  if (!changed) return node;
+  return { ...node, children };
 }
 
 function findNodeInTree(root: LayoutNode, id: string): LayoutNode | null {
@@ -435,11 +459,14 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   updateSplitSizes: (branchId, sizes) =>
     set((state) => {
-      const nextTabs = state.tabs.map((tab) => ({
-        ...tab,
-        layout: updateSplitSizesInTree(tab.layout, branchId, sizes),
-      }));
-      return { tabs: nextTabs };
+      let tabsChanged = false;
+      const nextTabs = state.tabs.map((tab) => {
+        const layout = updateSplitSizesInTree(tab.layout, branchId, sizes);
+        if (layout === tab.layout) return tab;
+        tabsChanged = true;
+        return { ...tab, layout };
+      });
+      return tabsChanged ? { tabs: nextTabs } : state;
     }),
 
   swapPanes: (idA, idB) =>

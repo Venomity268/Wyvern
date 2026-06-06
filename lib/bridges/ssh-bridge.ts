@@ -13,6 +13,7 @@ import {
   type SshForward,
 } from "./ssh-forwards";
 import { registerSession, unregisterSession } from "../sessions/registry";
+import { normalizePrivateKeyForSsh2 } from "../ssh/ssh-keys";
 
 const IDLE_TIMEOUT_MS = 8 * 60 * 60 * 1000;
 
@@ -356,13 +357,26 @@ export function handleSshConnection(ws: WebSocket, user: SessionUser) {
     };
 
     if (privateKey) {
-      connectConfig.privateKey = privateKey;
+      connectConfig.privateKey = normalizePrivateKeyForSsh2(privateKey);
       if (passphrase) connectConfig.passphrase = passphrase;
     } else if (password) {
       connectConfig.password = password;
     }
 
-    sshClient.connect(connectConfig);
+    try {
+      sshClient.connect(connectConfig);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "SSH connect failed";
+      if (ws.readyState === WebSocket.OPEN) {
+        if (mode === "tunnel") {
+          sendJson(ws, { error: message });
+        } else {
+          ws.send(`\r\n\x1b[31mSSH error: ${message}\x1b[0m\r\n`);
+        }
+        ws.close();
+      }
+      cleanup("error", message);
+    }
   }
 
   ws.on("message", onFirstMessage);

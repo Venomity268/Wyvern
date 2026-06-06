@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { defaultPort } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import type { ConnectionProtocol } from "@/lib/protocols";
+import { PROTOCOL_LABELS } from "@/lib/protocols";
 import type { ConnectionMethodInput } from "@/lib/db/connection-methods";
 
 export type { ConnectionMethodInput };
@@ -297,14 +298,19 @@ export function ConnectionForm({
                   key={p}
                   className={`space-y-2 rounded-md border p-3 ${enabled[p] ? "border-zinc-700" : "border-transparent opacity-60"}`}
                 >
-                  <label className="flex items-center gap-2 text-sm font-medium text-zinc-200">
-                    <input
-                      type="checkbox"
-                      checked={enabled[p]}
-                      onChange={() => toggleProtocol(p)}
-                      className="rounded border-zinc-600"
-                    />
-                    {p.toUpperCase()}
+                  <label className="flex flex-col gap-0.5 text-sm font-medium text-zinc-200 sm:flex-row sm:items-center sm:gap-2">
+                    <span className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={enabled[p]}
+                        onChange={() => toggleProtocol(p)}
+                        className="rounded border-zinc-600"
+                      />
+                      {PROTOCOL_LABELS[p].label}
+                    </span>
+                    <span className="text-xs font-normal text-zinc-500 sm:ml-6">
+                      {PROTOCOL_LABELS[p].hint}
+                    </span>
                   </label>
                   {enabled[p] && (
                     <div className="grid gap-3 sm:grid-cols-2">
@@ -344,6 +350,14 @@ export function ConnectionForm({
                         </select>
                       </div>
                     </div>
+                  )}
+                  {enabled[p] && p === "ssh" && (
+                    <p className="text-xs text-zinc-500">
+                      On Ubuntu:{" "}
+                      <code className="rounded bg-zinc-800 px-1">
+                        sudo apt install openssh-server &amp;&amp; sudo systemctl enable --now ssh
+                      </code>
+                    </p>
                   )}
                 </div>
               ))}

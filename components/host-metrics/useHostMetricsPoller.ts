@@ -13,6 +13,7 @@ export function useHostMetricsPoller(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [visible, setVisible] = useState(false);
+  const [gone, setGone] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const collectingRef = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -30,6 +31,7 @@ export function useHostMetricsPoller(
     setPrevKey({ connectionId, initialSummary });
     setSummary(initialSummary || null);
     setError("");
+    setGone(false);
   }
 
   useEffect(() => {
@@ -45,7 +47,7 @@ export function useHostMetricsPoller(
   }, [enabled, connectionId]);
 
   const collect = useCallback(async (force = false) => {
-    if (!enabled || collectingRef.current) return;
+    if (!enabled || gone || collectingRef.current) return;
     collectingRef.current = true;
     setLoading(true);
     setError("");
@@ -55,6 +57,10 @@ export function useHostMetricsPoller(
       let currentSummary = summary;
       if (!currentSummary) {
         const getRes = await fetch(`/api/connections/${connectionId}/collect-info`);
+        if (getRes.status === 404) {
+          if (mountedRef.current) setGone(true);
+          return;
+        }
         if (getRes.ok) {
           const getData = await getRes.json();
           if (getData.summary) {
@@ -95,6 +101,10 @@ export function useHostMetricsPoller(
         const data = await res.json();
         if (!mountedRef.current) return;
         if (!res.ok) {
+          if (res.status === 404) {
+            setGone(true);
+            return;
+          }
           if (!currentSummary) {
             setError(data.error || "Collection failed");
           }
@@ -108,7 +118,7 @@ export function useHostMetricsPoller(
       if (mountedRef.current) setLoading(false);
       collectingRef.current = false;
     }
-  }, [connectionId, enabled, summary]);
+  }, [connectionId, enabled, gone, summary]);
 
   useEffect(() => {
     if (intervalRef.current) {
@@ -116,7 +126,7 @@ export function useHostMetricsPoller(
       intervalRef.current = null;
     }
 
-    if (!enabled || !visible) return;
+    if (!enabled || !visible || gone) return;
 
     const timeout = setTimeout(() => {
       void collect();
@@ -132,7 +142,7 @@ export function useHostMetricsPoller(
         intervalRef.current = null;
       }
     };
-  }, [enabled, visible, connectionId, collect]);
+  }, [enabled, visible, gone, connectionId, collect]);
 
   return {
     summary,

@@ -17,6 +17,7 @@ import { installClipboardHandler, installPasteHandler, sendTextToRemote } from "
 import { installMouseHandlers } from "@/lib/guac/mouse";
 import { sendCtrlAltDel } from "@/lib/guac/rdp";
 import { useDisconnectOnLeave } from "@/lib/hooks/useDisconnectOnLeave";
+import { usePreventBackspaceNavigation } from "@/lib/hooks/usePreventBackspaceNavigation";
 import { Loader2, X } from "lucide-react";
 import { useIsMobile } from "@/lib/hooks/useIsMobile";
 
@@ -92,6 +93,7 @@ export function GuacamoleViewer({
   const keyboardPausedRef = useRef(false);
   const zoomModeRef = useRef<ZoomMode>("fit");
   const connectAttemptRef = useRef(0);
+  const clientWasConnectedRef = useRef(false);
   const savedAuthRef = useRef<{ username: string; password: string }>({ username: "", password: "" });
   const resizeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -107,10 +109,16 @@ export function GuacamoleViewer({
   const [clipboardOpen, setClipboardOpen] = useState(false);
   const [sshOpen, setSshOpen] = useState(false);
   const [sshEverOpened, setSshEverOpened] = useState(false);
+  const [sshFocused, setSshFocused] = useState(false);
   const [activeMobileTab, setActiveMobileTab] = useState<"desktop" | "ssh">("desktop");
   const [portForwardOpen, setPortForwardOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [remoteClipboard, setRemoteClipboard] = useState("");
+
+  const usernameRef = useRef(username);
+  const passwordRef = useRef(password);
+  usernameRef.current = username;
+  passwordRef.current = password;
 
   const protocolLabel = protocol.toUpperCase();
 
@@ -206,14 +214,15 @@ export function GuacamoleViewer({
   const connect = useCallback(
     async (auth?: { username?: string; password?: string }) => {
       const attempt = ++connectAttemptRef.current;
+      clientWasConnectedRef.current = false;
       teardownClient();
       resetSidePanels();
       setState("connecting");
       setError("");
       setRemoteClipboard("");
 
-      const authUsername = auth?.username || username || defaultUsername || "";
-      const authPassword = auth?.password ?? password;
+      const authUsername = auth?.username || usernameRef.current || defaultUsername || "";
+      const authPassword = auth?.password ?? passwordRef.current;
       savedAuthRef.current = { username: authUsername, password: authPassword };
 
       const { width, height } = getDisplaySize();
@@ -291,14 +300,18 @@ export function GuacamoleViewer({
             clientState === ClientState.WAITING ||
             clientState === ClientState.CONNECTED
           ) {
+            clientWasConnectedRef.current = true;
             setState("connected");
             relayoutAfterLayout();
           }
           if (
-            clientState === ClientState.DISCONNECTED ||
-            clientState === ClientState.DISCONNECTING
+            clientState === ClientState.DISCONNECTED &&
+            clientWasConnectedRef.current
           ) {
-            endSession("Session closed");
+            clientWasConnectedRef.current = false;
+            resetSidePanels();
+            setError((prev) => prev || "Remote desktop session ended");
+            setState("auth");
           }
         };
 
@@ -310,18 +323,24 @@ export function GuacamoleViewer({
             relayoutAfterLayout();
           }
           if (tunnelState === TunnelState.CLOSED) {
-            endSession("Connection closed");
+            resetSidePanels();
+            setError((prev) => prev || "Connection closed");
+            setState("auth");
           }
         };
 
         tunnel.onerror = (status: { message?: string }) => {
           if (attempt !== connectAttemptRef.current) return;
-          endSession(status.message || "Desktop tunnel error");
+          resetSidePanels();
+          setError(status.message || "Desktop tunnel error");
+          setState("auth");
         };
 
         client.onerror = (status: { message?: string }) => {
           if (attempt !== connectAttemptRef.current) return;
-          endSession(status.message || "Desktop connection failed");
+          resetSidePanels();
+          setError(status.message || "Desktop connection failed");
+          setState("auth");
         };
 
         installClipboardHandler(client, Guacamole, (text) => {
@@ -356,16 +375,17 @@ export function GuacamoleViewer({
       defaultUsername,
       endSession,
       getDisplaySize,
-      password,
       protocol,
       relayout,
       relayoutAfterLayout,
       resetSidePanels,
       sendRemoteSize,
       teardownClient,
-      username,
     ],
   );
+
+  const connectRef = useRef(connect);
+  connectRef.current = connect;
 
   useEffect(() => {
     zoomModeRef.current = zoomMode;
@@ -379,7 +399,7 @@ export function GuacamoleViewer({
     let timeout: ReturnType<typeof setTimeout>;
     if (hasStoredCredential) {
       timeout = setTimeout(() => {
-        connect();
+        void connectRef.current();
       }, 0);
     }
     return () => {
@@ -387,7 +407,7 @@ export function GuacamoleViewer({
       connectAttemptRef.current += 1;
       teardownClient();
     };
-  }, [connectionId, quickSessionId, hasStoredCredential, connect, teardownClient]);
+  }, [connectionId, quickSessionId, hasStoredCredential, teardownClient]);
 
   useEffect(() => {
     if (state !== "connected") return;
@@ -437,8 +457,33 @@ export function GuacamoleViewer({
   }, [handlePaneResize]);
 
   useEffect(() => {
-    keyboardPausedRef.current = clipboardOpen || portForwardOpen;
-  }, [clipboardOpen, portForwardOpen]);
+    keyboardPausedRef.current = clipboardOpen || portForwardOpen || sshFocused;
+  }, [clipboardOpen, portForwardOpen, sshFocused]);
+
+  useEffect(() => {
+    const el = terminalPaneRef.current;
+    if (!el || !sshEverOpened) return;
+
+    const onFocusIn = (e: FocusEvent) => {
+      if (el.contains(e.target as Node)) setSshFocused(true);
+    };
+    const onFocusOut = (e: FocusEvent) => {
+      const next = e.relatedTarget;
+      if (!next || !el.contains(next as Node)) setSshFocused(false);
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      if (el.contains(e.target as Node)) setSshFocused(true);
+    };
+
+    el.addEventListener("focusin", onFocusIn);
+    el.addEventListener("focusout", onFocusOut);
+    el.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      el.removeEventListener("focusin", onFocusIn);
+      el.removeEventListener("focusout", onFocusOut);
+      el.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [sshEverOpened, sshOpen]);
 
   const focusDesktop = useCallback(() => {
     displayElRef.current?.focus();
@@ -468,14 +513,6 @@ export function GuacamoleViewer({
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [portForwardOpen, clipboardOpen]);
-
-  if (!mounted) {
-    return (
-      <div className="flex items-center justify-center h-full w-full bg-zinc-950 text-zinc-500 text-sm">
-        Loading session...
-      </div>
-    );
-  }
 
   const toggleFullscreen = useCallback(async () => {
     const el = sessionRef.current;
@@ -541,11 +578,33 @@ export function GuacamoleViewer({
     setClipboardOpen((open) => !open);
   }, []);
 
+  const sendGuacBackspace = useCallback(() => {
+    focusDesktop();
+    if (clientRef.current) {
+      clientRef.current.sendKeyEvent(1, 0xff08);
+      clientRef.current.sendKeyEvent(0, 0xff08);
+    }
+  }, [focusDesktop]);
+
+  usePreventBackspaceNavigation(
+    state === "connected" && !sshFocused,
+    sendGuacBackspace,
+  );
+
+  if (!mounted) {
+    return (
+      <div className="flex items-center justify-center h-full w-full bg-zinc-950 text-zinc-500 text-sm">
+        Loading session...
+      </div>
+    );
+  }
+
   const showAuth = state === "auth" || state === "error";
   const portWarning = isLikelyWrongVncPort(protocol, port)
     ? `Port ${port} is unusual for VNC (expected 5900 or your host's VNC port).`
     : null;
   const needsUsername = protocol === "rdp";
+  const showVncUsername = protocol === "vnc";
 
   const desktopView = (
     <div
@@ -579,7 +638,7 @@ export function GuacamoleViewer({
     hasSshAccess && sshEverOpened ? (
       <div
         ref={terminalPaneRef}
-        className={`h-full min-h-0 border-l border-zinc-800 ${sshOpen ? "" : "hidden"}`}
+        className={`h-full min-h-0 border-l border-zinc-800 select-text ${sshOpen ? "" : "hidden"}`}
       >
         <SshTerminal
           key={`${effectiveSshConnectionId}-ssh`}
@@ -599,7 +658,7 @@ export function GuacamoleViewer({
     ) : null;
 
   const sessionBody = (
-    <div ref={sessionRef} className="relative flex h-full flex-col bg-zinc-950">
+    <div ref={sessionRef} className="relative flex h-full min-h-0 flex-1 flex-col bg-zinc-950">
       {portWarning && state !== "auth" && (
         <div className="border-b border-amber-900/50 bg-amber-950/40 px-4 py-2 text-sm text-amber-200">
           {portWarning}
@@ -718,6 +777,20 @@ export function GuacamoleViewer({
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
+                  className="border-zinc-700 bg-zinc-800 text-zinc-100"
+                />
+              </div>
+            )}
+            {showVncUsername && (
+              <div className="space-y-2">
+                <Label htmlFor="desktop-username" className="text-zinc-300">
+                  Username <span className="text-zinc-500">(optional on some VNC servers)</span>
+                </Label>
+                <Input
+                  id="desktop-username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder={defaultUsername || "e.g. act"}
                   className="border-zinc-700 bg-zinc-800 text-zinc-100"
                 />
               </div>
