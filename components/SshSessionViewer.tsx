@@ -848,6 +848,27 @@ export function SshSessionViewer({
 
   usePreventBackspaceNavigation(isMainConnected);
 
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || !isTouchDevice || !isMainConnected) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.closest(
+          "button, a, input, textarea, select, [role='button'], [contenteditable='true']",
+        )
+      ) {
+        return;
+      }
+      terminalRefs.current.get(activePaneId)?.focus();
+    };
+
+    viewport.addEventListener("pointerdown", onPointerDown);
+    return () => viewport.removeEventListener("pointerdown", onPointerDown);
+  }, [activePaneId, isMainConnected, isTouchDevice]);
+
   if (!mounted) {
     return (
       <div className="flex items-center justify-center h-full w-full bg-background text-muted text-sm">
@@ -875,27 +896,6 @@ export function SshSessionViewer({
     ) : null;
 
   const activeTerminal = terminalRefs.current.get(activePaneId);
-
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport || !isTouchDevice || !isMainConnected) return;
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (event.pointerType !== "touch") return;
-      const target = event.target as HTMLElement | null;
-      if (
-        target?.closest(
-          "button, a, input, textarea, select, [role='button'], [contenteditable='true']",
-        )
-      ) {
-        return;
-      }
-      terminalRefs.current.get(activePaneId)?.focus();
-    };
-
-    viewport.addEventListener("pointerdown", onPointerDown);
-    return () => viewport.removeEventListener("pointerdown", onPointerDown);
-  }, [activePaneId, isMainConnected, isTouchDevice]);
 
   const getActivePaneComponentType = (node: LayoutNode, targetId: string): string | null => {
     if (node.type === "leaf") {

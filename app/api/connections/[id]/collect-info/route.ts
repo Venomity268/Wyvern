@@ -74,7 +74,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const snapshot = await collectHostInfoViaSsh(resolved);
+    const snapshot = await collectHostInfoViaSsh(resolved, summaryOnly);
     upsertConnectionHostInfo(getDb(), id, snapshot);
 
     const row = getConnectionHostInfo(getDb(), id);

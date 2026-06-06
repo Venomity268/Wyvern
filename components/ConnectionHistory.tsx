@@ -62,35 +62,38 @@ function HistoryRow({
     : "secondary";
 
   return (
-    <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex min-w-0 flex-1 items-start gap-3">
+    <div className="flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:justify-between lg:flex-col lg:items-stretch lg:gap-2">
+      <div className="flex min-w-0 flex-1 items-start gap-2.5">
         {item.is_live && <StatusDot live />}
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h4 className="truncate text-sm font-medium text-foreground">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <h4 className="truncate text-xs font-semibold text-foreground" title={item.connection_name || ""}>
               {item.connection_name || "—"}
             </h4>
-            <Badge variant={protocolBadgeVariant(item.protocol)} className="font-mono uppercase">
+            <Badge variant={protocolBadgeVariant(item.protocol)} className="font-mono text-[9px] uppercase px-1.5 py-0">
               {item.protocol}
             </Badge>
-            <Badge variant={statusVariant}>{statusLabel}</Badge>
+            <Badge variant={statusVariant} className="text-[9px] px-1.5 py-0">{statusLabel}</Badge>
           </div>
-          <p className="mt-0.5 break-all font-mono text-xs text-muted-foreground">
+          <p className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground" title={item.hostname || ""}>
             {item.hostname || "—"}
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-1 text-[10px] text-muted-foreground">
             {item.workspace_name && <span>{item.workspace_name} · </span>}
-            {new Date(item.started_at + "Z").toLocaleString()}
+            {new Date(item.started_at + "Z").toLocaleDateString()} at {new Date(item.started_at + "Z").toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>
       </div>
 
       {showActions && (
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 gap-1.5 sm:justify-end lg:mt-1 lg:justify-start">
           {item.connection_id && (
-            <Link href={`/session/${item.connection_id}?via=${item.protocol as ConnectionProtocol}`}>
-              <Button size="sm" variant="outline">
-                {item.is_live ? "Resume" : "Open"}
+            <Link
+              href={`/session/${item.connection_id}?via=${item.protocol as ConnectionProtocol}`}
+              className="w-full sm:w-auto lg:w-full"
+            >
+              <Button size="sm" variant="outline" className="h-7 w-full sm:w-auto lg:w-full text-[11px] py-1">
+                {item.is_live ? "Resume" : "Reconnect"}
               </Button>
             </Link>
           )}
@@ -98,6 +101,7 @@ function HistoryRow({
             <Button
               size="sm"
               variant="destructive"
+              className="h-7 text-[11px] py-1"
               disabled={endingId === item.id}
               onClick={() => onEnd(item.id)}
             >
@@ -184,7 +188,7 @@ export function ConnectionHistory({
           <Card>
             <CardContent className="divide-y divide-border p-0">
               {recentItems.map((item) => (
-                <HistoryRow key={item.id} item={item} showActions={false} />
+                <HistoryRow key={item.id} item={item} showActions={true} />
               ))}
             </CardContent>
           </Card>

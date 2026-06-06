@@ -8,7 +8,8 @@ import type {
   HostServiceInfo,
 } from "./types";
 
-const COLLECT_SCRIPT = `
+function buildCollectScript(summaryOnly: boolean): string {
+  let script = `
 set -eu
 echo "@META"
 echo "FQDN=$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo)"
@@ -30,7 +31,7 @@ echo "MEM_TOTAL=$MT"
 echo "MEM_USED=$MU"
 echo "MEM_AVAIL=$MA"
 if [ -n "$MT" ] && [ "$MT" -gt 0 ] 2>/dev/null; then
-  echo "MEM_PCT=$(awk "BEGIN {printf \\"%.1f\\", ($MU/$MT)*100}")"
+  echo "MEM_PCT=$(awk "BEGIN {printf \"%.1f\", ($MU/$MT)*100}")"
 else
   echo "MEM_PCT=0"
 fi
@@ -42,17 +43,21 @@ echo "DISK_PCT=$DP"
 IFACE=$(ip route show default 2>/dev/null | awk '{print $5; exit}')
 if [ -n "$IFACE" ] && [ -r /proc/net/dev ]; then
   read -r RX TX <<< "$(awk -v iface="$IFACE:" '$1==iface {print $2,$10}' /proc/net/dev)"
-  echo "NET_RX_MB=$(awk "BEGIN {printf \\"%.1f\\", $RX/1048576}")"
-  echo "NET_TX_MB=$(awk "BEGIN {printf \\"%.1f\\", $TX/1048576}")"
+  echo "NET_RX_MB=$(awk "BEGIN {printf \"%.1f\", $RX/1048576}")"
+  echo "NET_TX_MB=$(awk "BEGIN {printf \"%.1f\", $TX/1048576}")"
 fi
 if command -v top >/dev/null 2>&1; then
-  IDLE=$(top -bn1 | awk -F',' '/%Cpu\\(s\\)/ {
+  IDLE=$(top -bn1 | awk -F',' '/%Cpu\(s\)/ {
     for (i=1;i<=NF;i++) if ($i ~ /id/) { gsub(/[^0-9.]/,"",$i); print $i; exit }
   }')
   if [ -n "$IDLE" ]; then
-    echo "CPU_PCT=$(awk "BEGIN {printf \\"%.1f\\", 100-$IDLE}")"
+    echo "CPU_PCT=$(awk "BEGIN {printf \"%.1f\", 100-$IDLE}")"
   fi
 fi
+`.trim();
+
+  if (!summaryOnly) {
+    script += `
 echo "@PROCS"
 ps -eo pid=,user=,pcpu=,pmem=,comm= --sort=-pcpu 2>/dev/null | head -n 15 | while read -r PID USER CPU MEM COMM; do
   echo "$PID|$USER|$CPU|$MEM|$COMM"
@@ -66,7 +71,7 @@ echo "@PORTS"
 if command -v ss >/dev/null 2>&1; then
   ss -tulpn 2>/dev/null | tail -n +2 | head -n 40 | while read -r NET STATE RECV SEND LOCAL REMOTE PROC; do
     PROTO=$(echo "$NET" | tr '[:upper:]' '[:lower:]')
-    ADDR=$(echo "$LOCAL" | sed 's/\\[//g;s/\\]//g')
+    ADDR=$(echo "$LOCAL" | sed 's/\\\[//g;s/\\\]//g')
     PORT=$(echo "$ADDR" | awk -F: '{print $NF}')
     HOST=$(echo "$ADDR" | sed 's/:.*//')
     PNAME=$(echo "$PROC" | sed -n 's/.*(\\"\\([^\\"]\\+\\)".*/\\1/p')
@@ -81,7 +86,11 @@ elif command -v netstat >/dev/null 2>&1; then
     echo "$PROTO|$HOST|$PORT|$PNAME"
   done
 fi
-`.trim();
+`;
+  }
+
+  return script;
+}
 
 function parseFloatSafe(value: string | undefined): number | null {
   if (!value?.trim()) return null;
@@ -285,6 +294,7 @@ function emptySnapshot(error: string): HostMetricsSnapshot {
 
 export async function collectHostInfoViaSsh(
   resolved: ResolvedSshConnection,
+  summaryOnly = false,
 ): Promise<HostMetricsSnapshot> {
   return new Promise((resolve) => {
     const fail = (message: string) => {
@@ -294,7 +304,7 @@ export async function collectHostInfoViaSsh(
     connectSshClient(
       resolved,
       (client) => {
-        void execScript(client, COLLECT_SCRIPT)
+        void execScript(client, buildCollectScript(summaryOnly))
           .then(({ stdout, stderr, code }) => {
             client.end();
             if (code !== 0 && !stdout.trim()) {

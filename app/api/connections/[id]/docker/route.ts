@@ -90,10 +90,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         resolved,
         async (client) => {
           try {
-            // Run docker ps -a with custom JSON layout
+            // Run docker ps -a with custom JSON layout including compose stack info
             const psResult = await execCommand(
               client,
-              `docker ps -a --format '{"id":"{{.ID}}","name":"{{.Names}}","image":"{{.Image}}","state":"{{.State}}","status":"{{.Status}}","ports":"{{.Ports}}"}'`,
+              `docker ps -a --format '{"id":"{{.ID}}","name":"{{.Names}}","image":"{{.Image}}","state":"{{.State}}","status":"{{.Status}}","ports":"{{.Ports}}","compose_project":"{{.Label "com.docker.compose.project"}}","compose_service":"{{.Label "com.docker.compose.service"}}","stack_namespace":"{{.Label "com.docker.stack.namespace"}}"}'`,
               resolved.password
             );
 
@@ -194,9 +194,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "Action and containerId required" }, { status: 400 });
     }
 
-    if (!["start", "stop", "restart", "logs"].includes(action)) {
+    if (!["start", "stop", "restart", "logs", "inspect", "top", "start-stack", "stop-stack", "restart-stack"].includes(action)) {
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
+
+    const cleanId = containerId.replace(/[^a-zA-Z0-9\-_\.]/g, "");
 
     const db = getDb();
     const connection = db.prepare("SELECT * FROM connections WHERE id = ?").get(id);
@@ -222,13 +224,23 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           try {
             let cmd = "";
             if (action === "start") {
-              cmd = `docker start ${containerId}`;
+              cmd = `docker start ${cleanId}`;
             } else if (action === "stop") {
-              cmd = `docker stop ${containerId}`;
+              cmd = `docker stop ${cleanId}`;
             } else if (action === "restart") {
-              cmd = `docker restart ${containerId}`;
+              cmd = `docker restart ${cleanId}`;
             } else if (action === "logs") {
-              cmd = `docker logs --tail 200 ${containerId}`;
+              cmd = `docker logs --tail 200 ${cleanId}`;
+            } else if (action === "inspect") {
+              cmd = `docker inspect ${cleanId}`;
+            } else if (action === "top") {
+              cmd = `docker top ${cleanId}`;
+            } else if (action === "start-stack") {
+              cmd = `ids=\$(docker ps -a -q --filter "label=com.docker.compose.project=${cleanId}" ; docker ps -a -q --filter "label=com.docker.stack.namespace=${cleanId}") && [ ! -z "\$ids" ] && docker start \$ids || true`;
+            } else if (action === "stop-stack") {
+              cmd = `ids=\$(docker ps -a -q --filter "label=com.docker.compose.project=${cleanId}" ; docker ps -a -q --filter "label=com.docker.stack.namespace=${cleanId}") && [ ! -z "\$ids" ] && docker stop \$ids || true`;
+            } else if (action === "restart-stack") {
+              cmd = `ids=\$(docker ps -a -q --filter "label=com.docker.compose.project=${cleanId}" ; docker ps -a -q --filter "label=com.docker.stack.namespace=${cleanId}") && [ ! -z "\$ids" ] && docker restart \$ids || true`;
             }
 
             const result = await execCommand(client, cmd, resolved.password);

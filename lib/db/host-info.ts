@@ -93,7 +93,36 @@ export function upsertConnectionHostInfo(
   snapshot: HostMetricsSnapshot,
 ) {
   const existing = getConnectionHostInfo(db, connectionId);
-  const history = appendHistory(parseHistory(existing?.metrics_history_json ?? null), snapshot);
+
+  const mergedSnapshot = { ...snapshot };
+  if (existing && existing.metrics_json) {
+    try {
+      const existingMetrics = JSON.parse(existing.metrics_json) as HostMetricsDetail;
+
+      // If the new snapshot lacks detailed lists, retain the existing ones from the database cache
+      if ((!mergedSnapshot.processes || mergedSnapshot.processes.length === 0) && existingMetrics.processes && existingMetrics.processes.length > 0) {
+        mergedSnapshot.processes = existingMetrics.processes;
+      }
+      if ((!mergedSnapshot.user_services || mergedSnapshot.user_services.length === 0) && existingMetrics.user_services && existingMetrics.user_services.length > 0) {
+        mergedSnapshot.user_services = existingMetrics.user_services;
+      }
+      if ((!mergedSnapshot.listening_ports || mergedSnapshot.listening_ports.length === 0) && existingMetrics.listening_ports && existingMetrics.listening_ports.length > 0) {
+        mergedSnapshot.listening_ports = existingMetrics.listening_ports;
+      }
+
+      // Also merge static OS/system metadata if missing in the new snapshot but present in existing cache
+      if (!mergedSnapshot.fqdn && existingMetrics.fqdn) mergedSnapshot.fqdn = existingMetrics.fqdn;
+      if (!mergedSnapshot.os_name && existingMetrics.os_name) mergedSnapshot.os_name = existingMetrics.os_name;
+      if (!mergedSnapshot.os_version && existingMetrics.os_version) mergedSnapshot.os_version = existingMetrics.os_version;
+      if (!mergedSnapshot.kernel && existingMetrics.kernel) mergedSnapshot.kernel = existingMetrics.kernel;
+      if (!mergedSnapshot.cpu_model && existingMetrics.cpu_model) mergedSnapshot.cpu_model = existingMetrics.cpu_model;
+      if (mergedSnapshot.cpu_count === null && existingMetrics.cpu_count !== null) mergedSnapshot.cpu_count = existingMetrics.cpu_count;
+    } catch (e) {
+      console.error("Failed to parse existing metrics_json for merge:", e);
+    }
+  }
+
+  const history = appendHistory(parseHistory(existing?.metrics_history_json ?? null), mergedSnapshot);
 
   db.prepare(
     `INSERT INTO connection_host_info
@@ -124,24 +153,24 @@ export function upsertConnectionHostInfo(
        raw_json = excluded.raw_json`,
   ).run(
     connectionId,
-    snapshot.fqdn,
-    snapshot.os_name,
-    snapshot.os_version,
-    snapshot.kernel,
-    snapshot.cpu_model,
-    snapshot.memory_total_mb,
-    snapshot.memory_used_mb,
-    snapshot.memory_util_pct,
-    snapshot.disk_total_gb,
-    snapshot.disk_used_gb,
-    snapshot.disk_util_pct,
-    snapshot.cpu_util_pct,
-    snapshot.uptime_seconds,
-    snapshot.collected_at,
-    snapshot.collection_error,
-    snapshotToMetricsJson(snapshot, history),
+    mergedSnapshot.fqdn,
+    mergedSnapshot.os_name,
+    mergedSnapshot.os_version,
+    mergedSnapshot.kernel,
+    mergedSnapshot.cpu_model,
+    mergedSnapshot.memory_total_mb,
+    mergedSnapshot.memory_used_mb,
+    mergedSnapshot.memory_util_pct,
+    mergedSnapshot.disk_total_gb,
+    mergedSnapshot.disk_used_gb,
+    mergedSnapshot.disk_util_pct,
+    mergedSnapshot.cpu_util_pct,
+    mergedSnapshot.uptime_seconds,
+    mergedSnapshot.collected_at,
+    mergedSnapshot.collection_error,
+    snapshotToMetricsJson(mergedSnapshot, history),
     JSON.stringify(history),
-    Object.keys(snapshot.raw).length ? JSON.stringify(snapshot.raw) : null,
+    Object.keys(mergedSnapshot.raw).length ? JSON.stringify(mergedSnapshot.raw) : null,
   );
 }
 

@@ -67,14 +67,6 @@ export default async function HomePage() {
       <PageHeader
         title={`Welcome back${displayName ? `, ${displayName}` : ""}`}
         description="Monitor the Wyvern host, jump into saved connections, and pick up recent sessions."
-        actions={
-          <Link href="/connect">
-            <Button size="sm">
-              <Zap className="h-4 w-4" />
-              Quick connect
-            </Button>
-          </Link>
-        }
       />
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -87,12 +79,17 @@ export default async function HomePage() {
         />
       </div>
 
-      <DashboardConnections connections={allConnections} pinnedIds={pinnedIds} />
-
-      <ConnectionHistory
-        activeItems={activeSessions as Parameters<typeof ConnectionHistory>[0]["activeItems"]}
-        recentItems={recentHistory as Parameters<typeof ConnectionHistory>[0]["recentItems"]}
-      />
+      <div className="grid gap-6 lg:grid-cols-3 items-start">
+        <div className="lg:col-span-2 space-y-6">
+          <DashboardConnections connections={allConnections} pinnedIds={pinnedIds} />
+        </div>
+        <div className="space-y-6">
+          <ConnectionHistory
+            activeItems={activeSessions as Parameters<typeof ConnectionHistory>[0]["activeItems"]}
+            recentItems={recentHistory as Parameters<typeof ConnectionHistory>[0]["recentItems"]}
+          />
+        </div>
+      </div>
     </div>
   );
 }
