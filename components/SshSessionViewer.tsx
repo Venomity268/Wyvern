@@ -17,6 +17,7 @@ import { PortForwardPanel } from "@/components/PortForwardPanel";
 import { FileManagerPanel } from "@/components/file-manager/FileManagerPanel";
 import { DockerPanel } from "@/components/DockerPanel";
 import { useIsMobile } from "@/lib/hooks/useIsMobile";
+import { useIsTouchDevice } from "@/lib/hooks/useIsTouchDevice";
 import { usePreventBackspaceNavigation } from "@/lib/hooks/usePreventBackspaceNavigation";
 import { useDisconnectOnLeave } from "@/lib/hooks/useDisconnectOnLeave";
 import {
@@ -110,6 +111,7 @@ const StableTerminalInstance = React.memo(function StableTerminalInstance({
   hostname,
   defaultUsername,
   hasStoredCredential,
+  autoFocusOnConnect,
   updateTabState,
   clearTabState,
   resetSidePanels,
@@ -123,6 +125,7 @@ const StableTerminalInstance = React.memo(function StableTerminalInstance({
   hostname: string;
   defaultUsername?: string | null;
   hasStoredCredential: boolean;
+  autoFocusOnConnect?: boolean;
   updateTabState: (id: string, state: Record<string, unknown>) => void;
   clearTabState: (id: string) => void;
   resetSidePanels: () => void;
@@ -146,6 +149,7 @@ const StableTerminalInstance = React.memo(function StableTerminalInstance({
       variant="embedded"
       chromeless
       paneVisible
+      autoFocusOnConnect={autoFocusOnConnect}
       reportSessionEnd={paneId === "main"}
       onStateChange={(state) => {
         updateTabState(paneId, { sessionState: state });
@@ -258,7 +262,7 @@ const PaneLayout = ({
                 e.stopPropagation();
                 onSplit(node.id, "horizontal");
               }}
-              className="leading-none hover:text-foreground"
+              className="touch-target inline-flex h-8 w-8 items-center justify-center leading-none hover:text-foreground"
               title="Split horizontally"
             >
               ◧
@@ -269,7 +273,7 @@ const PaneLayout = ({
                 e.stopPropagation();
                 onSplit(node.id, "vertical");
               }}
-              className="leading-none hover:text-foreground"
+              className="touch-target inline-flex h-8 w-8 items-center justify-center leading-none hover:text-foreground"
               title="Split vertically"
             >
               ◫
@@ -280,10 +284,10 @@ const PaneLayout = ({
                 e.stopPropagation();
                 onClosePane(node.id);
               }}
-              className="font-mono text-destructive hover:text-destructive/80"
+              className="touch-target inline-flex h-8 w-8 items-center justify-center text-destructive hover:text-destructive/80"
               title="Close pane"
             >
-              <X className="h-3 w-3" />
+              <X className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
@@ -396,6 +400,7 @@ export function SshSessionViewer({
   const slotObserversRef = useRef<Map<string, ResizeObserver>>(new Map());
   const [paneRects, setPaneRects] = useState<Record<string, PaneRect>>({});
   const isMobile = useIsMobile();
+  const isTouchDevice = useIsTouchDevice();
 
   // Central store layout selectors
   const initializeStore = useSessionStore((state) => state.initialize);
@@ -871,6 +876,27 @@ export function SshSessionViewer({
 
   const activeTerminal = terminalRefs.current.get(activePaneId);
 
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || !isTouchDevice || !isMainConnected) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.pointerType !== "touch") return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.closest(
+          "button, a, input, textarea, select, [role='button'], [contenteditable='true']",
+        )
+      ) {
+        return;
+      }
+      terminalRefs.current.get(activePaneId)?.focus();
+    };
+
+    viewport.addEventListener("pointerdown", onPointerDown);
+    return () => viewport.removeEventListener("pointerdown", onPointerDown);
+  }, [activePaneId, isMainConnected, isTouchDevice]);
+
   const getActivePaneComponentType = (node: LayoutNode, targetId: string): string | null => {
     if (node.type === "leaf") {
       return node.id === targetId ? node.componentType : null;
@@ -941,7 +967,7 @@ export function SshSessionViewer({
               <div
                 key={tab.id}
                 onClick={() => setActiveTabId(tab.id)}
-                draggable
+                draggable={!isTouchDevice}
                 onDragStart={(e) => {
                   e.dataTransfer.setData("text/tab-id", tab.id);
                   e.dataTransfer.effectAllowed = "move";
@@ -1131,6 +1157,7 @@ export function SshSessionViewer({
                         hostname={hostname}
                         defaultUsername={defaultUsername}
                         hasStoredCredential={hasStoredCredential}
+                        autoFocusOnConnect={isTouchDevice}
                         updateTabState={updateTabState}
                         clearTabState={clearTabState}
                         resetSidePanels={resetSidePanels}

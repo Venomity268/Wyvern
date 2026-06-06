@@ -14,7 +14,7 @@ import {
   Network,
   RefreshCw,
 } from "lucide-react";
-import { useIsMobile } from "@/lib/hooks/useIsMobile";
+import { useIsTouchDevice } from "@/lib/hooks/useIsTouchDevice";
 import { SessionToolButton, SessionToolDivider } from "@/components/session/SessionToolButton";
 
 interface SshToolbarProps {
@@ -50,23 +50,12 @@ export function SshToolbar({
   onDisconnect,
   onFocusTerminal,
 }: SshToolbarProps) {
-  const [isTouchDevice, setIsTouchDevice] = useState(false);
-  const isMobile = useIsMobile();
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
-      const timeout = setTimeout(() => {
-        setIsTouchDevice(isTouch);
-      }, 0);
-      return () => clearTimeout(timeout);
-    }
-  }, []);
+  const isTouchDevice = useIsTouchDevice();
 
   return (
     <>
-      {onFocusTerminal && isTouchDevice && isMobile && (
-        <SessionToolButton title="Focus keyboard" onClick={onFocusTerminal}>
+      {onFocusTerminal && isTouchDevice && (
+        <SessionToolButton title="Show keyboard" onClick={onFocusTerminal}>
           <Keyboard className="h-4 w-4" />
         </SessionToolButton>
       )}

@@ -7,6 +7,7 @@ import { FileContextMenu, isArchiveFile } from "./FileContextMenu";
 import { FileEntryIcon } from "./FileIcons";
 import { FileToolbar } from "./FileToolbar";
 import { PermissionsDialog } from "./PermissionsDialog";
+import { useIsTouchDevice } from "@/lib/hooks/useIsTouchDevice";
 import { useIsMobile } from "@/lib/hooks/useIsMobile";
 import type { FileManagerState } from "./hooks/useFileManager";
 
@@ -22,18 +23,7 @@ function formatDate(mtime?: number) {
 
 export function FileBrowser({ fm, onClose }: FileBrowserProps) {
   const isMobile = useIsMobile();
-  const [isTouchDevice, setIsTouchDevice] = useState(false);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
-      const timeout = setTimeout(() => {
-        setIsTouchDevice(isTouch);
-      }, 0);
-      return () => clearTimeout(timeout);
-    }
-  }, []);
-
+  const isTouchDevice = useIsTouchDevice();
   const shouldOpenOnSingleClick = isMobile || isTouchDevice;
 
   const fileInputRef = useRef<HTMLInputElement>(null);

@@ -565,6 +565,10 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
 
         <div
           className={`ssh-terminal-host relative flex min-h-0 flex-1 flex-col w-full h-full select-text ${showAuth ? "hidden" : ""}`}
+          onPointerDown={(e) => {
+            if (e.pointerType === "mouse" && e.button !== 0) return;
+            if (stateRef.current === "connected") focus();
+          }}
         >
           {!chromeless && (
             <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-2 py-1">

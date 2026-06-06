@@ -17,6 +17,7 @@ import {
   Scan,
   Terminal,
 } from "lucide-react";
+import { useIsTouchDevice } from "@/lib/hooks/useIsTouchDevice";
 import { SessionToolButton, SessionToolDivider } from "@/components/session/SessionToolButton";
 import { Button } from "@/components/ui/button";
 
@@ -32,6 +33,7 @@ interface DesktopToolbarProps {
   onCtrlAltDel: () => void;
   onReconnect: () => void;
   onDisconnect: () => void;
+  onFocusDesktop?: () => void;
   sshOpen?: boolean;
   portForwardOpen?: boolean;
   onToggleSsh?: () => void;
@@ -51,6 +53,7 @@ export function DesktopToolbar({
   onCtrlAltDel,
   onReconnect,
   onDisconnect,
+  onFocusDesktop,
   sshOpen = false,
   portForwardOpen = false,
   onToggleSsh,
@@ -59,6 +62,7 @@ export function DesktopToolbar({
 }: DesktopToolbarProps) {
   const [helpOpen, setHelpOpen] = useState(false);
   const helpRef = useRef<HTMLDivElement>(null);
+  const isTouchDevice = useIsTouchDevice();
 
   useEffect(() => {
     if (!helpOpen) return;
@@ -73,6 +77,11 @@ export function DesktopToolbar({
 
   return (
     <>
+      {onFocusDesktop && isTouchDevice && (
+        <SessionToolButton title="Focus remote desktop" onClick={onFocusDesktop}>
+          <Keyboard className="h-4 w-4" />
+        </SessionToolButton>
+      )}
       <SessionToolButton
         active={zoomMode === "fit"}
         title="Fit to window"

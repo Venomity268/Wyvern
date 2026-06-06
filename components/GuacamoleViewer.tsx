@@ -15,6 +15,8 @@ import type { GuacProtocol } from "@/lib/protocols";
 import { applyDisplayLayout, type ZoomMode } from "@/lib/guac/display";
 import { installClipboardHandler, installPasteHandler, sendTextToRemote } from "@/lib/guac/clipboard";
 import { installMouseHandlers } from "@/lib/guac/mouse";
+import { configureGuacDisplayElement } from "@/lib/guac/display-element";
+import { useIsTouchDevice } from "@/lib/hooks/useIsTouchDevice";
 import { sendCtrlAltDel } from "@/lib/guac/rdp";
 import { useDisconnectOnLeave } from "@/lib/hooks/useDisconnectOnLeave";
 import { usePreventBackspaceNavigation } from "@/lib/hooks/usePreventBackspaceNavigation";
@@ -98,6 +100,7 @@ export function GuacamoleViewer({
   const resizeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isMobile = useIsMobile();
+  const isTouchDevice = useIsTouchDevice();
   const [state, setState] = useState<ViewerState>(
     hasStoredCredential ? "connecting" : "auth",
   );
@@ -282,6 +285,7 @@ export function GuacamoleViewer({
 
         const displayEl = client.getDisplay().getElement();
         displayEl.className = "guac-display";
+        configureGuacDisplayElement(displayEl, `${connectionName} remote desktop`);
         displayElRef.current = displayEl;
         containerRef.current.innerHTML = "";
         containerRef.current.appendChild(displayEl);
@@ -501,7 +505,7 @@ export function GuacamoleViewer({
 
   useEffect(() => {
     if (!portForwardOpen && !clipboardOpen) return;
-    function handleClick(e: MouseEvent) {
+    function handlePointerDown(e: PointerEvent) {
       const target = e.target as Node;
       if (portForwardOpen && portOverlayRef.current && !portOverlayRef.current.contains(target)) {
         setPortForwardOpen(false);
@@ -510,8 +514,8 @@ export function GuacamoleViewer({
         setClipboardOpen(false);
       }
     }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [portForwardOpen, clipboardOpen]);
 
   const toggleFullscreen = useCallback(async () => {
@@ -610,7 +614,10 @@ export function GuacamoleViewer({
     <div
       ref={desktopPaneRef}
       className="relative flex h-full min-h-0 flex-col"
-      onMouseDown={focusDesktop}
+      onPointerDown={(e) => {
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        focusDesktop();
+      }}
     >
       {state === "connecting" && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-950/80">
@@ -677,6 +684,7 @@ export function GuacamoleViewer({
         onCtrlAltDel={handleCtrlAltDel}
         onReconnect={handleReconnect}
         onDisconnect={handleDisconnect}
+        onFocusDesktop={focusDesktop}
         sshOpen={sshOpen}
         portForwardOpen={portForwardOpen}
         onToggleSsh={hasSshAccess ? handleToggleSsh : undefined}

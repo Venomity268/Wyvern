@@ -86,7 +86,7 @@ export function SplitPane({
         <div className="flex border-b border-zinc-800 bg-zinc-900/90 px-2 shrink-0">
           <button
             type="button"
-            className={`px-3 py-2 text-[11px] sm:px-4 sm:py-2.5 sm:text-xs font-semibold uppercase tracking-wider border-b-2 transition-colors ${
+            className={`touch-target-inline min-h-11 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-colors ${
               activeTab === "primary"
                 ? "border-emerald-500 text-emerald-400"
                 : "border-transparent text-zinc-400 hover:text-zinc-200"
@@ -97,7 +97,7 @@ export function SplitPane({
           </button>
           <button
             type="button"
-            className={`px-3 py-2 text-[11px] sm:px-4 sm:py-2.5 sm:text-xs font-semibold uppercase tracking-wider border-b-2 transition-colors ${
+            className={`touch-target-inline min-h-11 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition-colors ${
               activeTab === "secondary"
                 ? "border-emerald-500 text-emerald-400"
                 : "border-transparent text-zinc-400 hover:text-zinc-200"
@@ -145,6 +145,7 @@ export function SplitPane({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        style={{ touchAction: "none" }}
       />
       <div
         className={`min-h-0 min-w-0 ${showSecondary ? "flex-1" : "hidden"}`}

@@ -83,35 +83,44 @@ export function SessionLayout({
       className="flex flex-col overflow-hidden bg-background"
       style={{ height: viewportHeight }}
     >
-      <header className="flex shrink-0 items-center gap-2 border-b border-border bg-card/90 px-2 py-1.5 backdrop-blur-sm sm:gap-3 sm:px-3">
-        <Link href="/">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
-            title="Back to dashboard"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
+      <header className="shrink-0 border-b border-border bg-card/90 backdrop-blur-sm">
+        <div className="flex items-center gap-2 px-2 py-1.5 sm:gap-3 sm:px-3">
+          <Link href="/">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+              title="Back to dashboard"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
 
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <StatusDot status={status} />
-          <h1 className="truncate text-sm font-semibold text-foreground">{title}</h1>
-          {protocol && (
-            <Badge variant={protocol} className="hidden shrink-0 uppercase sm:inline-flex">
-              {protocol}
-            </Badge>
-          )}
-          {endpoint && (
-            <span className="hidden min-w-0 truncate font-mono text-xs text-muted-foreground md:inline">
-              {endpoint}
-            </span>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <StatusDot status={status} />
+            <h1 className="truncate text-sm font-semibold text-foreground">{title}</h1>
+            {protocol && (
+              <Badge variant={protocol} className="shrink-0 uppercase">
+                {protocol}
+              </Badge>
+            )}
+            {endpoint && (
+              <span className="hidden min-w-0 truncate font-mono text-xs text-muted-foreground md:inline">
+                {endpoint}
+              </span>
+            )}
+          </div>
+
+          {(toolbar || actions) && (
+            <div className="hidden items-center gap-0.5 lg:flex">
+              {toolbar}
+              {actions}
+            </div>
           )}
         </div>
 
         {(toolbar || actions) && (
-          <div className="flex max-w-[55vw] items-center gap-0.5 overflow-x-auto scrollbar-none sm:max-w-none">
+          <div className="flex items-center gap-0.5 overflow-x-auto border-t border-border px-2 py-1 scrollbar-none lg:hidden">
             {toolbar}
             {actions}
           </div>
@@ -119,7 +128,7 @@ export function SessionLayout({
       </header>
 
       {tabs && (
-        <div className="flex shrink-0 items-center gap-2 border-b border-border bg-card/60 px-2 py-1 sm:px-3">
+        <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-border bg-card/60 px-2 py-1 scrollbar-none sm:px-3">
           {tabs}
         </div>
       )}

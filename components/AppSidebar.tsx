@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -54,7 +54,7 @@ function NavLink({
       onClick={onClick}
       title={collapsed ? label : undefined}
       className={cn(
-        "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
+        "touch-target-inline flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors",
         active
           ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
           : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
@@ -119,186 +119,211 @@ export function AppSidebar({ user, workspaces }: AppSidebarProps) {
 
   const closeMobile = () => setMobileOpen(false);
 
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mobileOpen]);
+
   const newWorkspaceActive = pathname === "/workspaces/new";
 
-  const sidebarContent = (
-    <>
-      <div
-        className={cn(
-          "flex h-14 shrink-0 items-center border-b border-sidebar-border",
-          collapsed ? "justify-center px-2" : "justify-between px-3",
-        )}
-      >
-        <Link
-          href="/"
-          onClick={closeMobile}
+  function SidebarPanel({
+    menuCollapsed,
+    showMobileClose,
+  }: {
+    menuCollapsed: boolean;
+    showMobileClose?: boolean;
+  }) {
+    return (
+      <>
+        <div
           className={cn(
-            "flex items-center gap-2 font-semibold text-sidebar-foreground",
-            collapsed && "justify-center",
+            "flex h-14 shrink-0 items-center border-b border-sidebar-border",
+            menuCollapsed ? "justify-center px-2" : "justify-between px-3",
           )}
-          title={APP_NAME}
         >
-          {collapsed ? (
-            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
-              W
-            </span>
-          ) : (
-            <span className="text-lg tracking-tight">{APP_NAME}</span>
-          )}
-        </Link>
-        {!collapsed && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="hidden h-8 w-8 text-muted-foreground lg:flex"
-            onClick={toggleCollapsed}
-            aria-label="Collapse sidebar"
+          <Link
+            href="/"
+            onClick={closeMobile}
+            className={cn(
+              "flex items-center gap-2 font-semibold text-sidebar-foreground",
+              menuCollapsed && "justify-center",
+            )}
+            title={APP_NAME}
           >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-        )}
-      </div>
-
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
-        <NavLink
-          href="/"
-          icon={Home}
-          label="Home"
-          active={pathname === "/"}
-          collapsed={collapsed}
-          onClick={closeMobile}
-        />
-
-        <NavSectionHeader
-          label="Workspaces"
-          collapsed={collapsed}
-          action={
-            <Link
-              href="/workspaces/new"
+            {menuCollapsed ?
+              <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
+                W
+              </span>
+            : <span className="text-lg tracking-tight">{APP_NAME}</span>}
+          </Link>
+          {showMobileClose ?
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground"
               onClick={closeMobile}
-              title="New workspace"
-              aria-label="New workspace"
-              className={cn(
-                "flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-                newWorkspaceActive && "bg-sidebar-accent text-sidebar-accent-foreground",
-              )}
+              aria-label="Close navigation"
             >
-              <Plus className="h-3.5 w-3.5" />
-            </Link>
-          }
-        />
-        {workspaces.map((ws) => (
+              <X className="h-4 w-4" />
+            </Button>
+          : !menuCollapsed ?
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hidden h-8 w-8 text-muted-foreground lg:flex"
+              onClick={toggleCollapsed}
+              aria-label="Collapse sidebar"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+          : null}
+        </div>
+
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
           <NavLink
-            key={ws.id}
-            href={`/workspace/${ws.id}`}
-            icon={FolderOpen}
-            label={ws.name}
-            active={pathname === `/workspace/${ws.id}`}
-            collapsed={collapsed}
+            href="/"
+            icon={Home}
+            label="Home"
+            active={pathname === "/"}
+            collapsed={menuCollapsed}
             onClick={closeMobile}
           />
-        ))}
-        {collapsed && (
-          <NavLink
-            href="/workspaces/new"
-            icon={Plus}
-            label="New workspace"
-            active={newWorkspaceActive}
-            collapsed={collapsed}
-            onClick={closeMobile}
+
+          <NavSectionHeader
+            label="Workspaces"
+            collapsed={menuCollapsed}
+            action={
+              <Link
+                href="/workspaces/new"
+                onClick={closeMobile}
+                title="New workspace"
+                aria-label="New workspace"
+                className={cn(
+                  "flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+                  newWorkspaceActive && "bg-sidebar-accent text-sidebar-accent-foreground",
+                )}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Link>
+            }
           />
-        )}
-
-        <div className="mt-auto" />
-        <NavLink
-          href="/connect"
-          icon={Zap}
-          label="Quick connect"
-          active={pathname === "/connect"}
-          collapsed={collapsed}
-          onClick={closeMobile}
-        />
-      </nav>
-
-      <div className="shrink-0 border-t border-sidebar-border p-2">
-        {collapsed && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="mb-1 hidden h-8 w-8 text-muted-foreground lg:flex"
-            onClick={toggleCollapsed}
-            aria-label="Expand sidebar"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        )}
-        {!collapsed && (
-          <div className="mb-2 flex items-center gap-2 px-1">
-            <UserAvatar
-              displayName={user.displayName}
-              email={user.email}
-              avatarUrl={user.avatarUrl}
-              size="sm"
+          {workspaces.map((ws) => (
+            <NavLink
+              key={ws.id}
+              href={`/workspace/${ws.id}`}
+              icon={FolderOpen}
+              label={ws.name}
+              active={pathname === `/workspace/${ws.id}`}
+              collapsed={menuCollapsed}
+              onClick={closeMobile}
             />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-sidebar-foreground">
-                {user.displayName || user.email}
-              </p>
-              {user.role === "admin" && (
-                <span className="inline-flex rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
-                  Admin
-                </span>
-              )}
+          ))}
+          {menuCollapsed && (
+            <NavLink
+              href="/workspaces/new"
+              icon={Plus}
+              label="New workspace"
+              active={newWorkspaceActive}
+              collapsed={menuCollapsed}
+              onClick={closeMobile}
+            />
+          )}
+
+          <div className="mt-auto" />
+          <NavLink
+            href="/connect"
+            icon={Zap}
+            label="Quick connect"
+            active={pathname === "/connect"}
+            collapsed={menuCollapsed}
+            onClick={closeMobile}
+          />
+        </nav>
+
+        <div className="shrink-0 border-t border-sidebar-border p-2">
+          {menuCollapsed && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="mb-1 hidden h-8 w-8 text-muted-foreground lg:flex"
+              onClick={toggleCollapsed}
+              aria-label="Expand sidebar"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          )}
+          {!menuCollapsed && (
+            <div className="mb-2 flex items-center gap-2 px-1">
+              <UserAvatar
+                displayName={user.displayName}
+                email={user.email}
+                avatarUrl={user.avatarUrl}
+                size="sm"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-sidebar-foreground">
+                  {user.displayName || user.email}
+                </p>
+                {user.role === "admin" && (
+                  <span className="inline-flex rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+                    Admin
+                  </span>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-sidebar-foreground"
+                onClick={() => {
+                  closeMobile();
+                  void logout();
+                }}
+                aria-label="Logout"
+                title="Logout"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0 text-muted-foreground hover:text-sidebar-foreground"
-              onClick={() => {
-                closeMobile();
-                void logout();
-              }}
-              aria-label="Logout"
-              title="Logout"
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
-        {collapsed && (
-          <div className="mb-2 flex flex-col items-center gap-1 px-1">
-            <UserAvatar
-              displayName={user.displayName}
-              email={user.email}
-              avatarUrl={user.avatarUrl}
-              size="sm"
-            />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-sidebar-foreground"
-              onClick={() => {
-                closeMobile();
-                void logout();
-              }}
-              aria-label="Logout"
-              title="Logout"
-            >
-              <LogOut className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
-        <NavLink
-          href="/settings"
-          icon={Settings}
-          label="Settings"
-          active={pathname === "/settings"}
-          collapsed={collapsed}
-          onClick={closeMobile}
-        />
-      </div>
-    </>
-  );
+          )}
+          {menuCollapsed && (
+            <div className="mb-2 hidden flex-col items-center gap-1 px-1 lg:flex">
+              <UserAvatar
+                displayName={user.displayName}
+                email={user.email}
+                avatarUrl={user.avatarUrl}
+                size="sm"
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-sidebar-foreground"
+                onClick={() => {
+                  closeMobile();
+                  void logout();
+                }}
+                aria-label="Logout"
+                title="Logout"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+          <NavLink
+            href="/settings"
+            icon={Settings}
+            label="Settings"
+            active={pathname === "/settings"}
+            collapsed={menuCollapsed}
+            onClick={closeMobile}
+          />
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -325,17 +350,8 @@ export function AppSidebar({ user, workspaces }: AppSidebarProps) {
             aria-label="Close navigation"
             onClick={closeMobile}
           />
-          <aside className="relative flex h-full w-72 max-w-[85vw] flex-col bg-sidebar shadow-xl">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute right-2 top-2 z-10 h-8 w-8 text-muted-foreground"
-              onClick={closeMobile}
-              aria-label="Close navigation"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-            {sidebarContent}
+          <aside className="relative flex h-full w-[min(100vw-3rem,18rem)] max-w-[85vw] flex-col bg-sidebar shadow-xl">
+            <SidebarPanel menuCollapsed={false} showMobileClose />
           </aside>
         </div>
       )}
@@ -346,7 +362,7 @@ export function AppSidebar({ user, workspaces }: AppSidebarProps) {
           collapsed ? "w-14" : "w-60",
         )}
       >
-        {sidebarContent}
+        <SidebarPanel menuCollapsed={collapsed} />
       </aside>
     </>
   );

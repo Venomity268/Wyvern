@@ -67,6 +67,27 @@ html {
   background-color: var(--background);
   color-scheme: dark;
   cursor: var(--cursor-default);
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (pointer: coarse) {
+  button,
+  a,
+  [role="button"],
+  label[for],
+  summary {
+    touch-action: manipulation;
+  }
+
+  .session-tool-button,
+  .touch-target {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+
+  .touch-target-inline {
+    min-height: 2.75rem;
+  }
 }
 
 body {
@@ -120,6 +141,12 @@ select:disabled,
 
 .guac-display {
   cursor: none;
+  touch-action: none;
+}
+
+.guac-display:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  outline-offset: 2px;
 }
 
 .guac-display canvas {
@@ -144,6 +171,7 @@ select:disabled,
   box-shadow: none;
   overflow: hidden;
   cursor: var(--cursor-text);
+  touch-action: manipulation;
 }
 
 .ssh-terminal-host .wterm .term-row {

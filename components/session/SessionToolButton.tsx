@@ -32,7 +32,7 @@ export function SessionToolButton({
       aria-label={title}
       onClick={onClick}
       className={cn(
-        "h-8 w-8 shrink-0",
+        "session-tool-button h-8 w-8 shrink-0 touch-manipulation",
         destructive ?
           "text-destructive hover:bg-destructive/10 hover:text-destructive"
         : "text-muted-foreground hover:text-foreground",
