@@ -119,6 +119,18 @@ export function primaryMethod(
   return methods[0];
 }
 
+/** Legacy connections.credential_id FK references credentials; bastion key lives on methods only. */
+export function toLegacyCredentialId(credentialId: string | null | undefined): string | null {
+  if (!credentialId || credentialId === "__bastion__") return null;
+  return credentialId;
+}
+
+export function legacyConnectionCredentialId(
+  methods: ConnectionMethodInput[],
+): string | null {
+  return toLegacyCredentialId(primaryMethod(methods)?.credential_id ?? null);
+}
+
 export function normalizeMethods(
   methods: ConnectionMethodInput[] | undefined,
   fallback?: { protocol: ConnectionProtocol; port: number; credential_id?: string | null },

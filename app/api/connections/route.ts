@@ -7,6 +7,8 @@ import {
   getMethodsForConnection,
   normalizeMethods,
   primaryMethod,
+  legacyConnectionCredentialId,
+  toLegacyCredentialId,
   resolveMethodCredentials,
   saveMethodsForConnection,
   type ConnectionMethodInput,
@@ -72,8 +74,16 @@ function validateMethodCredentials(methods: ConnectionMethodInput[], workspaceId
   return null;
 }
 
-function primaryCredentialId(methods: ConnectionMethodInput[]) {
-  return primaryMethod(methods)?.credential_id ?? null;
+function normalizeFolderId(
+  folderId: string | null | undefined,
+  workspaceId: string,
+): string | null {
+  if (!folderId) return null;
+  const folder = getDb()
+    .prepare("SELECT workspace_id FROM folders WHERE id = ?")
+    .get(folderId) as { workspace_id: string } | undefined;
+  if (!folder || folder.workspace_id !== workspaceId) return null;
+  return folderId;
 }
 
 function syncLegacyColumns(
@@ -100,7 +110,7 @@ function syncLegacyColumns(
       primary.port,
       primary.protocol,
       fields.username ?? null,
-      primaryCredentialId(methods),
+      legacyConnectionCredentialId(methods),
       fields.workspace_id,
       fields.folder_id ?? null,
       fields.tags ?? null,
@@ -205,7 +215,10 @@ export async function POST(request: NextRequest) {
     const id = uuidv4();
     const name = (body.name as string) || `${source.name} (copy)`;
 
-    const folderId = (body.folder_id as string | undefined) ?? (source as { folder_id?: string | null }).folder_id ?? null;
+    const folderId = normalizeFolderId(
+      (body.folder_id as string | undefined) ?? (source as { folder_id?: string | null }).folder_id ?? null,
+      workspaceId,
+    );
     const tags = (body.tags as string | undefined) ?? (source as { tags?: string | null }).tags ?? null;
 
     getDb()
@@ -224,7 +237,7 @@ export async function POST(request: NextRequest) {
         primary.port,
         primary.protocol,
         source.username,
-        primaryCredentialId(methods) ?? credId,
+        legacyConnectionCredentialId(methods) ?? toLegacyCredentialId(credId),
         (source as { mac_address?: string | null }).mac_address ?? null,
         (source as { wol_broadcast?: string | null }).wol_broadcast ?? null,
       );
@@ -276,7 +289,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const folderId = body.folder_id as string | null | undefined ?? null;
+  const folderId = normalizeFolderId(body.folder_id as string | null | undefined ?? null, workspaceId);
   const tags = body.tags as string | null | undefined ?? null;
 
   getDb()
@@ -295,7 +308,7 @@ export async function POST(request: NextRequest) {
       primary.port,
       primary.protocol,
       body.username || null,
-      primaryCredentialId(methods),
+      legacyConnectionCredentialId(methods),
       macAddress,
       wolBroadcast,
     );
@@ -372,7 +385,10 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: credError.error }, { status: 400 });
   }
 
-  const folderId = "folder_id" in updates ? (updates.folder_id as string | null) : (existing as { folder_id?: string | null }).folder_id ?? null;
+  const folderId = normalizeFolderId(
+    "folder_id" in updates ? (updates.folder_id as string | null) : (existing as { folder_id?: string | null }).folder_id ?? null,
+    workspaceId,
+  );
   const tags = "tags" in updates ? (updates.tags as string | null) : (existing as { tags?: string | null }).tags ?? null;
 
   syncLegacyColumns(id, methods, {

@@ -35,6 +35,7 @@ interface ForwardAddMessage {
   remoteHost: string;
   remotePort: number;
   localPort?: number;
+  listenHost?: string;
 }
 
 interface ForwardRemoveMessage {
@@ -99,6 +100,7 @@ export function handleSshConnection(ws: WebSocket, user: SessionUser) {
         msg.remoteHost,
         msg.remotePort,
         msg.localPort,
+        msg.listenHost,
       );
       forwards.set(forward.id, forward);
       sendJson(ws, {
@@ -106,7 +108,7 @@ export function handleSshConnection(ws: WebSocket, user: SessionUser) {
         id: forward.id,
         requestId,
         localPort: forward.localPort,
-        listenHost: getForwardListenHost(),
+        listenHost: forward.listenHost,
         remoteHost: forward.remoteHost,
         remotePort: forward.remotePort,
       });
@@ -127,6 +129,19 @@ export function handleSshConnection(ws: WebSocket, user: SessionUser) {
     sendJson(ws, { type: "forward-removed", id: msg.id });
   }
 
+  function handleForwardList() {
+    sendJson(ws, {
+      type: "forward-list",
+      forwards: Array.from(forwards.values()).map((forward) => ({
+        id: forward.id,
+        remoteHost: forward.remoteHost,
+        remotePort: forward.remotePort,
+        localPort: forward.localPort,
+        listenHost: forward.listenHost,
+      })),
+    });
+  }
+
   function handleControlMessage(input: string) {
     resetIdleTimer();
     try {
@@ -137,6 +152,10 @@ export function handleSshConnection(ws: WebSocket, user: SessionUser) {
       }
       if (parsed.type === "forward-remove") {
         handleForwardRemove(parsed as unknown as ForwardRemoveMessage);
+        return true;
+      }
+      if (parsed.type === "forward-list") {
+        handleForwardList();
         return true;
       }
       if (parsed.type === "resize" && shellStream && parsed.cols && parsed.rows) {

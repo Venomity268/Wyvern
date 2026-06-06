@@ -13,7 +13,7 @@ import { SshToolbar, SshPastePanel } from "@/components/SshToolbar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { PortForwardPanel } from "@/components/PortForwardPanel";
+import { PortForwardPanel, type PortForward } from "@/components/PortForwardPanel";
 import { FileManagerPanel } from "@/components/file-manager/FileManagerPanel";
 import { DockerPanel } from "@/components/DockerPanel";
 import { useIsMobile } from "@/lib/hooks/useIsMobile";
@@ -543,6 +543,7 @@ export function SshSessionViewer({
 
   const [sidePanel, setSidePanel] = useState<SidePanel>("none");
   const [portOverlay, setPortOverlay] = useState(false);
+  const [portForwards, setPortForwards] = useState<PortForward[]>([]);
   const [clipboardOpen, setClipboardOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -567,6 +568,10 @@ export function SshSessionViewer({
   const sessionState = activePaneState.sessionState;
   const shellWs = activePaneState.shellWs || mainState.shellWs;
   const sessionCredentials = activePaneState.sessionCredentials || mainState.sessionCredentials;
+
+  useEffect(() => {
+    if (!shellWs) setPortForwards([]);
+  }, [shellWs]);
 
   const isConnected = sessionState === "connected";
 
@@ -890,6 +895,9 @@ export function SshSessionViewer({
           defaultUsername={defaultUsername}
           hasStoredCredential={hasStoredCredential}
           remoteHostname={hostname}
+          forwards={portForwards}
+          onForwardsChange={setPortForwards}
+          isActive
           onClose={() => setSidePanel("none")}
         />
       </div>
@@ -1188,6 +1196,9 @@ export function SshSessionViewer({
               defaultUsername={defaultUsername}
               hasStoredCredential={hasStoredCredential}
               remoteHostname={hostname}
+              forwards={portForwards}
+              onForwardsChange={setPortForwards}
+              isActive
               onClose={() => setPortOverlay(false)}
             />
           </div>

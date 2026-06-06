@@ -7,12 +7,26 @@ import { Label } from "@/components/ui/label";
 import { wsUrl } from "@/lib/utils";
 import { Copy, Loader2, Plus, Trash2, X } from "lucide-react";
 
-interface PortForward {
+export interface PortForward {
   id: string;
   remoteHost: string;
   remotePort: number;
   localPort: number;
   listenHost: string;
+}
+
+export type ForwardBindAddress = "127.0.0.1" | "0.0.0.0";
+
+const BIND_PREFERENCE_KEY = "wyvern:port-forward-bind";
+
+function readBindPreference(): ForwardBindAddress {
+  if (typeof window === "undefined") return "127.0.0.1";
+  const stored = window.localStorage.getItem(BIND_PREFERENCE_KEY);
+  return stored === "0.0.0.0" ? "0.0.0.0" : "127.0.0.1";
+}
+
+function formatBindLabel(listenHost: string): string {
+  return listenHost === "0.0.0.0" ? "0.0.0.0 (all interfaces)" : "127.0.0.1 (localhost)";
 }
 
 interface PortForwardPanelProps {
@@ -23,6 +37,14 @@ interface PortForwardPanelProps {
   remoteHostname: string;
   mode?: "standalone" | "multiplexed";
   shellWebSocket?: WebSocket | null;
+  tunnelWebSocket?: WebSocket | null;
+  forwards?: PortForward[];
+  onForwardsChange?: (forwards: PortForward[]) => void;
+  /** When false, skip WS listeners (state may still be passed from parent). */
+  isActive?: boolean;
+  /** Keep standalone tunnel open when the panel unmounts. */
+  persistTunnel?: boolean;
+  onTunnelWebSocketChange?: (ws: WebSocket | null) => void;
   onClose?: () => void;
 }
 
@@ -34,6 +56,12 @@ export function PortForwardPanel({
   remoteHostname,
   mode = "standalone",
   shellWebSocket = null,
+  tunnelWebSocket = null,
+  forwards: controlledForwards,
+  onForwardsChange,
+  isActive = true,
+  persistTunnel = false,
+  onTunnelWebSocketChange,
   onClose,
 }: PortForwardPanelProps) {
   const wsRef = useRef<WebSocket | null>(null);
@@ -43,50 +71,84 @@ export function PortForwardPanel({
   const [username, setUsername] = useState(defaultUsername || "");
   const [password, setPassword] = useState("");
   const [needsAuth, setNeedsAuth] = useState(!hasStoredCredential);
-  const [listenHost, setListenHost] = useState("127.0.0.1");
-  const [forwards, setForwards] = useState<PortForward[]>([]);
+  const [bindAddress, setBindAddress] = useState<ForwardBindAddress>(readBindPreference);
+  const [internalForwards, setInternalForwards] = useState<PortForward[]>([]);
   const [remoteHost, setRemoteHost] = useState("127.0.0.1");
   const [remotePort, setRemotePort] = useState("");
   const [localPort, setLocalPort] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const activeWs = mode === "multiplexed" ? shellWebSocket : wsRef.current;
+  const forwards = controlledForwards ?? internalForwards;
 
-  const handleForwardMessage = useCallback((data: string) => {
-    if (!data.startsWith("{")) return;
-    try {
-      const msg = JSON.parse(data) as Record<string, unknown>;
-      if (msg.type === "ready") {
-        setListenHost(String(msg.listenHost || "127.0.0.1"));
-        setReady(true);
-        setConnecting(false);
-        setNeedsAuth(false);
+  const updateForwards = useCallback(
+    (updater: PortForward[] | ((prev: PortForward[]) => PortForward[])) => {
+      const next =
+        typeof updater === "function" ? updater(forwards) : updater;
+      if (onForwardsChange) onForwardsChange(next);
+      else setInternalForwards(next);
+    },
+    [forwards, onForwardsChange],
+  );
+
+  const activeWs =
+    mode === "multiplexed" ? shellWebSocket : (tunnelWebSocket ?? wsRef.current);
+
+  const handleForwardMessage = useCallback(
+    (data: string) => {
+      if (!data.startsWith("{")) return;
+      try {
+        const msg = JSON.parse(data) as Record<string, unknown>;
+        if (msg.type === "ready") {
+          setReady(true);
+          setConnecting(false);
+          setNeedsAuth(false);
+        }
+        if (msg.type === "forward-list") {
+          const list = Array.isArray(msg.forwards) ? msg.forwards : [];
+          updateForwards(
+            list.map((entry) => {
+              const forward = entry as Record<string, unknown>;
+              return {
+                id: String(forward.id),
+                remoteHost: String(forward.remoteHost),
+                remotePort: Number(forward.remotePort),
+                localPort: Number(forward.localPort),
+                listenHost: String(forward.listenHost || "127.0.0.1"),
+              };
+            }),
+          );
+        }
+        if (msg.type === "forward-ready") {
+          const id = String(msg.id);
+          updateForwards((prev) => {
+            if (prev.some((forward) => forward.id === id)) return prev;
+            return [
+              ...prev,
+              {
+                id,
+                remoteHost: String(msg.remoteHost),
+                remotePort: Number(msg.remotePort),
+                localPort: Number(msg.localPort),
+                listenHost: String(msg.listenHost || bindAddress),
+              },
+            ];
+          });
+        }
+        if (msg.type === "forward-removed") {
+          updateForwards((prev) => prev.filter((f) => f.id !== msg.id));
+        }
+        if (msg.type === "forward-error") {
+          setError(String(msg.error || "Forward failed"));
+        }
+      } catch {
+        /* ignore */
       }
-      if (msg.type === "forward-ready") {
-        setForwards((prev) => [
-          ...prev,
-          {
-            id: String(msg.id),
-            remoteHost: String(msg.remoteHost),
-            remotePort: Number(msg.remotePort),
-            localPort: Number(msg.localPort),
-            listenHost: String(msg.listenHost || listenHost),
-          },
-        ]);
-      }
-      if (msg.type === "forward-removed") {
-        setForwards((prev) => prev.filter((f) => f.id !== msg.id));
-      }
-      if (msg.type === "forward-error") {
-        setError(String(msg.error || "Forward failed"));
-      }
-    } catch {
-      /* ignore */
-    }
-  }, [listenHost]);
+    },
+    [bindAddress, updateForwards],
+  );
 
   useEffect(() => {
-    if (mode !== "multiplexed") return;
+    if (mode !== "multiplexed" || !isActive) return;
 
     const timeout = setTimeout(() => {
       if (shellWebSocket?.readyState === WebSocket.OPEN) {
@@ -103,11 +165,8 @@ export function PortForwardPanel({
     }
 
     const handler = (event: MessageEvent) => {
-      const data =
-        typeof event.data === "string"
-          ? event.data
-          : new TextDecoder().decode(event.data as ArrayBuffer);
-      handleForwardMessage(data);
+      if (typeof event.data !== "string") return;
+      handleForwardMessage(event.data);
     };
 
     shellWebSocket.addEventListener("message", handler);
@@ -115,7 +174,36 @@ export function PortForwardPanel({
       clearTimeout(timeout);
       shellWebSocket.removeEventListener("message", handler);
     };
-  }, [handleForwardMessage, mode, shellWebSocket]);
+  }, [handleForwardMessage, isActive, mode, shellWebSocket]);
+
+  useEffect(() => {
+    if (mode !== "standalone" || !tunnelWebSocket) return;
+
+    wsRef.current = tunnelWebSocket;
+    if (tunnelWebSocket.readyState === WebSocket.OPEN) {
+      setReady(true);
+      setConnecting(false);
+      setNeedsAuth(false);
+    } else {
+      setReady(false);
+    }
+
+    const handler = (event: MessageEvent) => {
+      if (typeof event.data !== "string") return;
+      handleForwardMessage(event.data);
+    };
+
+    tunnelWebSocket.addEventListener("message", handler);
+    return () => tunnelWebSocket.removeEventListener("message", handler);
+  }, [handleForwardMessage, mode, tunnelWebSocket]);
+
+  useEffect(() => {
+    if (!isActive || !ready) return;
+    const ws =
+      mode === "multiplexed" ? shellWebSocket : (tunnelWebSocket ?? wsRef.current);
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "forward-list" }));
+  }, [isActive, mode, ready, shellWebSocket, tunnelWebSocket]);
 
   const connectTunnel = useCallback(
     (auth?: { username?: string; password?: string }) => {
@@ -126,6 +214,7 @@ export function PortForwardPanel({
 
       const ws = new WebSocket(wsUrl("/api/ssh"));
       wsRef.current = ws;
+      onTunnelWebSocketChange?.(ws);
 
       ws.onopen = () => {
         ws.send(
@@ -139,24 +228,22 @@ export function PortForwardPanel({
       };
 
       ws.onmessage = (event) => {
-        handleForwardMessage(event.data as string);
-        const data = event.data as string;
-        if (data.startsWith("{")) {
-          try {
-            const msg = JSON.parse(data);
-            if (msg.error) {
-              if (msg.needsAuth) {
-                setNeedsAuth(true);
-                setConnecting(false);
-                setError(String(msg.error));
-              } else {
-                setError(String(msg.error));
-                setConnecting(false);
-              }
+        if (typeof event.data !== "string") return;
+        handleForwardMessage(event.data);
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.error) {
+            if (msg.needsAuth) {
+              setNeedsAuth(true);
+              setConnecting(false);
+              setError(String(msg.error));
+            } else {
+              setError(String(msg.error));
+              setConnecting(false);
             }
-          } catch {
-            /* ignore */
           }
+        } catch {
+          /* ignore */
         }
       };
 
@@ -164,6 +251,7 @@ export function PortForwardPanel({
         setReady(false);
         setConnecting(false);
         wsRef.current = null;
+        onTunnelWebSocketChange?.(null);
       };
 
       ws.onerror = () => {
@@ -171,14 +259,17 @@ export function PortForwardPanel({
         setConnecting(false);
       };
     },
-    [connectionId, handleForwardMessage, mode, password, username],
+    [connectionId, handleForwardMessage, mode, onTunnelWebSocketChange, password, username],
   );
 
   useEffect(() => {
     return () => {
-      if (mode === "standalone") wsRef.current?.close();
+      if (mode === "standalone" && !persistTunnel) {
+        wsRef.current?.close();
+        wsRef.current = null;
+      }
     };
-  }, [mode]);
+  }, [mode, persistTunnel]);
 
   const addForward = useCallback(() => {
     const ws = activeWs;
@@ -196,6 +287,7 @@ export function PortForwardPanel({
       type: "forward-add",
       remoteHost,
       remotePort: port,
+      listenHost: bindAddress,
     };
     const preferred = parseInt(localPort, 10);
     if (!Number.isNaN(preferred) && preferred > 0) {
@@ -203,7 +295,14 @@ export function PortForwardPanel({
     }
     ws.send(JSON.stringify(payload));
     setLocalPort("");
-  }, [activeWs, localPort, mode, remoteHost, remotePort]);
+  }, [activeWs, bindAddress, localPort, mode, remoteHost, remotePort]);
+
+  const handleBindAddressChange = useCallback((value: ForwardBindAddress) => {
+    setBindAddress(value);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(BIND_PREFERENCE_KEY, value);
+    }
+  }, []);
 
   const removeForward = useCallback(
     (id: string) => {
@@ -307,14 +406,14 @@ export function PortForwardPanel({
             </>
           ) : (
             <>
-              Forwards listen on <strong className="text-zinc-200">{listenHost}</strong> through{" "}
+              Expose remote ports on this Wyvern host via{" "}
               <strong className="text-zinc-200">{connectionName}</strong>.
             </>
           )}
         </p>
 
-        <div className="grid gap-2 sm:grid-cols-4">
-          <div className="space-y-1 sm:col-span-2">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="space-y-1 sm:col-span-2 lg:col-span-2">
             <Label className="text-zinc-400">Remote host</Label>
             <Input
               value={remoteHost}
@@ -340,6 +439,22 @@ export function PortForwardPanel({
               placeholder="auto"
               className="border-zinc-700 bg-zinc-800 text-zinc-100"
             />
+          </div>
+          <div className="space-y-1 sm:col-span-2 lg:col-span-4">
+            <Label className="text-zinc-400">Listen on</Label>
+            <select
+              value={bindAddress}
+              onChange={(e) => handleBindAddressChange(e.target.value as ForwardBindAddress)}
+              className="flex h-9 w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 text-sm text-zinc-100"
+            >
+              <option value="127.0.0.1">Localhost (127.0.0.1)</option>
+              <option value="0.0.0.0">All interfaces (0.0.0.0)</option>
+            </select>
+            <p className="text-xs text-zinc-500">
+              {bindAddress === "127.0.0.1"
+                ? "Only reachable from this machine."
+                : "Reachable from other devices on the network using this host's IP address."}
+            </p>
           </div>
         </div>
 
@@ -367,7 +482,7 @@ export function PortForwardPanel({
                   className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
                 >
                   <span className="font-mono text-zinc-200">
-                    {forward.listenHost}:{forward.localPort} → {forward.remoteHost}:
+                    {formatBindLabel(forward.listenHost)}:{forward.localPort} → {forward.remoteHost}:
                     {forward.remotePort}
                   </span>
                   <div className="flex shrink-0 gap-1">

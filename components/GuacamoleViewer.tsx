@@ -5,7 +5,7 @@ import { SessionLayout } from "@/components/SessionLayout";
 import { DesktopToolbar } from "@/components/DesktopToolbar";
 import { SplitPane } from "@/components/SplitPane";
 import { SshTerminal } from "@/components/SshTerminal";
-import { PortForwardPanel } from "@/components/PortForwardPanel";
+import { PortForwardPanel, type PortForward } from "@/components/PortForwardPanel";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -115,6 +115,10 @@ export function GuacamoleViewer({
   const [sshFocused, setSshFocused] = useState(false);
   const [activeMobileTab, setActiveMobileTab] = useState<"desktop" | "ssh">("desktop");
   const [portForwardOpen, setPortForwardOpen] = useState(false);
+  const [portForwards, setPortForwards] = useState<PortForward[]>([]);
+  const [portForwardTunnelWs, setPortForwardTunnelWs] = useState<WebSocket | null>(null);
+  const portForwardTunnelWsRef = useRef<WebSocket | null>(null);
+  portForwardTunnelWsRef.current = portForwardTunnelWs;
   const [pasteText, setPasteText] = useState("");
   const [remoteClipboard, setRemoteClipboard] = useState("");
 
@@ -130,6 +134,13 @@ export function GuacamoleViewer({
     setPrevSshOpen(sshOpen);
     setActiveMobileTab(sshOpen ? "ssh" : "desktop");
   }
+
+  const closePortForwardTunnel = useCallback(() => {
+    portForwardTunnelWsRef.current?.close();
+    portForwardTunnelWsRef.current = null;
+    setPortForwardTunnelWs(null);
+    setPortForwards([]);
+  }, []);
 
   const resetSidePanels = useCallback(() => {
     setSshOpen(false);
@@ -194,6 +205,7 @@ export function GuacamoleViewer({
   const disconnectOnLeave = useCallback(() => {
     connectAttemptRef.current += 1;
     resetSidePanels();
+    closePortForwardTunnel();
     teardownClient();
     void fetch(
       quickSessionId
@@ -201,17 +213,18 @@ export function GuacamoleViewer({
         : `/api/history/end-connection/${connectionId}`,
       { method: "POST", keepalive: true },
     );
-  }, [connectionId, quickSessionId, resetSidePanels, teardownClient]);
+  }, [closePortForwardTunnel, connectionId, quickSessionId, resetSidePanels, teardownClient]);
 
   useDisconnectOnLeave(disconnectOnLeave);
 
   const endSession = useCallback(
     (message?: string) => {
       resetSidePanels();
+      closePortForwardTunnel();
       if (message) setError((prev) => prev || message);
       setState("error");
     },
-    [resetSidePanels],
+    [closePortForwardTunnel, resetSidePanels],
   );
 
   const connect = useCallback(
@@ -220,6 +233,7 @@ export function GuacamoleViewer({
       clientWasConnectedRef.current = false;
       teardownClient();
       resetSidePanels();
+      closePortForwardTunnel();
       setState("connecting");
       setError("");
       setRemoteClipboard("");
@@ -376,6 +390,7 @@ export function GuacamoleViewer({
     [
       connectionId,
       quickSessionId,
+      closePortForwardTunnel,
       defaultUsername,
       endSession,
       getDisplaySize,
@@ -558,6 +573,7 @@ export function GuacamoleViewer({
     connectAttemptRef.current += 1;
     teardownClient();
     resetSidePanels();
+    closePortForwardTunnel();
     setState("auth");
     void fetch(
       quickSessionId
@@ -565,7 +581,7 @@ export function GuacamoleViewer({
         : `/api/history/end-connection/${connectionId}`,
       { method: "POST", keepalive: true },
     );
-  }, [connectionId, quickSessionId, resetSidePanels, teardownClient]);
+  }, [closePortForwardTunnel, connectionId, quickSessionId, resetSidePanels, teardownClient]);
 
   const handleToggleSsh = useCallback(() => {
     setSshOpen((open) => {
@@ -759,6 +775,12 @@ export function GuacamoleViewer({
               defaultUsername={sshDefaultUsername}
               hasStoredCredential={sshHasStoredCredential}
               remoteHostname={hostname}
+              forwards={portForwards}
+              onForwardsChange={setPortForwards}
+              persistTunnel
+              tunnelWebSocket={portForwardTunnelWs}
+              onTunnelWebSocketChange={setPortForwardTunnelWs}
+              isActive
               onClose={() => setPortForwardOpen(false)}
             />
           </div>

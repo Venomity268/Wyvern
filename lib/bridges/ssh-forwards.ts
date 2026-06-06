@@ -6,8 +6,20 @@ export interface SshForward {
   id: string;
   server: net.Server;
   localPort: number;
+  listenHost: string;
   remoteHost: string;
   remotePort: number;
+}
+
+export const FORWARD_BIND_LOCALHOST = "127.0.0.1";
+export const FORWARD_BIND_ALL = "0.0.0.0";
+
+export function resolveForwardListenHost(value?: string | null): string {
+  if (value === FORWARD_BIND_ALL) return FORWARD_BIND_ALL;
+  if (value === FORWARD_BIND_LOCALHOST) return FORWARD_BIND_LOCALHOST;
+  const env = process.env.BASTION_FORWARD_HOST;
+  if (env === FORWARD_BIND_ALL || env === FORWARD_BIND_LOCALHOST) return env;
+  return FORWARD_BIND_LOCALHOST;
 }
 
 export function startSshForward(
@@ -15,7 +27,9 @@ export function startSshForward(
   remoteHost: string,
   remotePort: number,
   preferredLocalPort?: number,
+  listenHost?: string,
 ): Promise<SshForward> {
+  const bindHost = resolveForwardListenHost(listenHost);
   return new Promise((resolve, reject) => {
     const server = net.createServer((socket) => {
       sshClient.forwardOut(
@@ -35,7 +49,7 @@ export function startSshForward(
 
     server.on("error", reject);
 
-    server.listen(preferredLocalPort || 0, "127.0.0.1", () => {
+    server.listen(preferredLocalPort || 0, bindHost, () => {
       const addr = server.address();
       const localPort =
         typeof addr === "object" && addr ? addr.port : preferredLocalPort || 0;
@@ -43,6 +57,7 @@ export function startSshForward(
         id: uuidv4(),
         server,
         localPort,
+        listenHost: bindHost,
         remoteHost,
         remotePort,
       });
@@ -62,5 +77,5 @@ export function stopAllForwards(forwards: Map<string, SshForward>): void {
 }
 
 export function getForwardListenHost(): string {
-  return process.env.BASTION_FORWARD_HOST || "127.0.0.1";
+  return resolveForwardListenHost();
 }
