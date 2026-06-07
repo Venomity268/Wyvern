@@ -23,7 +23,7 @@ import { usePreventBackspaceNavigation } from "@/lib/hooks/usePreventBackspaceNa
 import { useTerminalCopyPaste } from "@/lib/hooks/useTerminalCopyPaste";
 import { installAltScreenRenderPatch } from "@/lib/terminal/alt-screen";
 import { attachTerminalWheel } from "@/lib/terminal/wheel";
-import { afterTerminalDisplaySync } from "@/lib/terminal/display-sync";
+import { afterTerminalDisplaySync, syncTerminalDisplayAfterRender } from "@/lib/terminal/display-sync";
 import { Loader2, X } from "lucide-react";
 
 interface SshConnectionInfo {
@@ -122,11 +122,13 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
     }, []);
 
     const syncDisplay = useCallback(() => {
-      afterTerminalDisplaySync(
+      const wt = termRef.current?.instance;
+      if (!wt || !wt.bridge) return;
+      wasAltScreenRef.current = syncTerminalDisplayAfterRender(
         wtermElRef.current,
-        termRef.current?.instance ?? null,
-        termRef.current?.instance?.bridge ?? null,
-        wasAltScreenRef,
+        wt,
+        wt.bridge,
+        wasAltScreenRef.current,
       );
     }, [termRef]);
     const [ghosttyCore, setGhosttyCore] = useState<Awaited<ReturnType<typeof createGhosttyCore>> | null>(null);
@@ -195,11 +197,31 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
       const queue = updateQueueRef.current;
       if (queue.length === 0) return;
       updateQueueRef.current = [];
+
+      const wt = termRef.current?.instance as any;
+      if (!wt || !wt.bridge) return;
+
+      wt._shouldScrollToBottom = wt._isScrolledToBottom();
       for (const chunk of queue) {
-        write(chunk);
+        if (typeof chunk === "string") {
+          wt.bridge.writeString(chunk);
+        } else {
+          wt.bridge.writeRaw(chunk);
+        }
       }
+
+      if (wt._renderTimer != null) {
+        clearTimeout(wt._renderTimer);
+        wt._renderTimer = null;
+      }
+      if (wt.rafId != null) {
+        cancelAnimationFrame(wt.rafId);
+        wt.rafId = null;
+      }
+
+      wt._doRender();
       syncDisplay();
-    }, [write, syncDisplay]);
+    }, [termRef, syncDisplay]);
 
     const handleTerminalOutput = useCallback(
       (data: string | Uint8Array) => {
