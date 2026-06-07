@@ -191,6 +191,8 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
 
     const updateQueueRef = useRef<(string | Uint8Array)[]>([]);
     const animationFrameIdRef = useRef<number | null>(null);
+    const inSynchronizedUpdateRef = useRef(false);
+    const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const flushQueue = useCallback(() => {
       animationFrameIdRef.current = null;
@@ -201,14 +203,30 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
       const wt = termRef.current?.instance as any;
       if (!wt || !wt.bridge) return;
 
+      let inSync = inSynchronizedUpdateRef.current;
+
       wt._shouldScrollToBottom = wt._isScrolledToBottom();
       for (const chunk of queue) {
+        const text = typeof chunk === "string" ? chunk : new TextDecoder("utf-8", { fatal: false }).decode(chunk);
+
+        // Detect synchronization start (DEC Mode 2026 or DCS synchronization)
+        if (text.includes("\x1b[?2026h") || text.includes("\x1bP=1s") || text.includes("\x1bP=2s")) {
+          inSync = true;
+        }
+
         if (typeof chunk === "string") {
           wt.bridge.writeString(chunk);
         } else {
           wt.bridge.writeRaw(chunk);
         }
+
+        // Detect synchronization end
+        if (text.includes("\x1b[?2026l") || text.includes("\x1bP=0s")) {
+          inSync = false;
+        }
       }
+
+      inSynchronizedUpdateRef.current = inSync;
 
       if (wt._renderTimer != null) {
         clearTimeout(wt._renderTimer);
@@ -219,8 +237,26 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
         wt.rafId = null;
       }
 
-      wt._doRender();
-      syncDisplay();
+      if (inSync) {
+        // Fallback timer: if sync mode hangs or network lags, force rendering after 100ms
+        if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+        syncTimeoutRef.current = setTimeout(() => {
+          syncTimeoutRef.current = null;
+          inSynchronizedUpdateRef.current = false;
+          const currentWt = termRef.current?.instance as any;
+          if (currentWt && currentWt.bridge) {
+            currentWt._doRender();
+            syncDisplay();
+          }
+        }, 100);
+      } else {
+        if (syncTimeoutRef.current) {
+          clearTimeout(syncTimeoutRef.current);
+          syncTimeoutRef.current = null;
+        }
+        wt._doRender();
+        syncDisplay();
+      }
     }, [termRef, syncDisplay]);
 
     const handleTerminalOutput = useCallback(
@@ -277,6 +313,10 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
           cancelAnimationFrame(animationFrameIdRef.current);
           animationFrameIdRef.current = null;
         }
+        if (syncTimeoutRef.current !== null) {
+          clearTimeout(syncTimeoutRef.current);
+          syncTimeoutRef.current = null;
+        }
         wheelCleanupRef.current?.();
         wheelCleanupRef.current = null;
       };
@@ -292,9 +332,14 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
         wsRef.current?.close();
 
         updateQueueRef.current = [];
+        inSynchronizedUpdateRef.current = false;
         if (animationFrameIdRef.current !== null) {
           cancelAnimationFrame(animationFrameIdRef.current);
           animationFrameIdRef.current = null;
+        }
+        if (syncTimeoutRef.current !== null) {
+          clearTimeout(syncTimeoutRef.current);
+          syncTimeoutRef.current = null;
         }
 
         clearTerminal();
