@@ -187,14 +187,30 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
       stateRef.current = state;
     }, [state]);
 
+    const updateQueueRef = useRef<(string | Uint8Array)[]>([]);
+    const animationFrameIdRef = useRef<number | null>(null);
+
+    const flushQueue = useCallback(() => {
+      animationFrameIdRef.current = null;
+      const queue = updateQueueRef.current;
+      if (queue.length === 0) return;
+      updateQueueRef.current = [];
+      for (const chunk of queue) {
+        write(chunk);
+      }
+      syncDisplay();
+    }, [write, syncDisplay]);
+
     const handleTerminalOutput = useCallback(
       (data: string | Uint8Array) => {
         receivedDataRef.current = true;
         setError("");
-        write(data);
-        syncDisplay();
+        updateQueueRef.current.push(data);
+        if (animationFrameIdRef.current === null) {
+          animationFrameIdRef.current = requestAnimationFrame(flushQueue);
+        }
       },
-      [write, syncDisplay],
+      [flushQueue],
     );
 
     const handleTerminalReady = useCallback(() => {
@@ -235,6 +251,10 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
     useEffect(() => {
       return () => {
         if (resizeNotifyRef.current) clearTimeout(resizeNotifyRef.current);
+        if (animationFrameIdRef.current !== null) {
+          cancelAnimationFrame(animationFrameIdRef.current);
+          animationFrameIdRef.current = null;
+        }
         wheelCleanupRef.current?.();
         wheelCleanupRef.current = null;
       };
@@ -248,6 +268,13 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
         setError("");
         receivedDataRef.current = false;
         wsRef.current?.close();
+
+        updateQueueRef.current = [];
+        if (animationFrameIdRef.current !== null) {
+          cancelAnimationFrame(animationFrameIdRef.current);
+          animationFrameIdRef.current = null;
+        }
+
         clearTerminal();
 
         const resolvedUsername = auth?.username || username || defaultUsername || "";
