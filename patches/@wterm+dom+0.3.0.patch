@@ -1,0 +1,73 @@
+diff --git a/node_modules/@wterm/dom/dist/renderer.js b/node_modules/@wterm/dom/dist/renderer.js
+index 9339372..aabf104 100644
+--- a/node_modules/@wterm/dom/dist/renderer.js
++++ b/node_modules/@wterm/dom/dist/renderer.js
+@@ -37,7 +37,7 @@ function cellBgCSS(bg, bgRgb) {
+         return rgbToCSS(bgRgb);
+     return colorToCSS(bg);
+ }
+-function buildCellStyle(fg, bg, flags, fgRgb, bgRgb) {
++function buildCellStyle(fg, bg, flags, fgRgb, bgRgb, defaultBg) {
+     let fgIdx = fg, bgIdx = bg, fgR = fgRgb, bgR = bgRgb;
+     if (flags & FLAG_REVERSE) {
+         const tmpIdx = fgIdx;
+@@ -52,7 +52,7 @@ function buildCellStyle(fg, bg, flags, fgRgb, bgRgb) {
+             bgIdx = 7;
+     }
+     const fgCSS = cellFgCSS(fgIdx, fgR);
+-    const bgCSS = cellBgCSS(bgIdx, bgR);
++    const bgCSS = cellBgCSS(bgIdx, bgR) || defaultBg;
+     let style = "";
+     if (fgCSS)
+         style += `color:${fgCSS};`;
+@@ -212,6 +212,21 @@ export class Renderer {
+         this.prevCursorCol = -1;
+     }
+     _buildRowContent(rowEl, getCell, lineLen, cursorCol, rowIndex) {
++        let bgCss = "";
++        if (lineLen >= this.cols && this.cols > 0) {
++            const lastCell = getCell(this.cols - 1);
++            let bgIdx = lastCell.bg;
++            let bgR = lastCell.bgRgb;
++            if (lastCell.flags & FLAG_REVERSE) {
++                bgIdx = lastCell.fg;
++                bgR = lastCell.fgRgb;
++                if (bgR === undefined && bgIdx === DEFAULT_COLOR)
++                    bgIdx = 7;
++            }
++            bgCss = cellBgCSS(bgIdx, bgR) || "";
++        }
++        const defaultBg = bgCss ? "var(--term-bg)" : undefined;
++
+         let html = "";
+         let runStyle = "";
+         let runText = "";
+@@ -264,7 +279,7 @@ export class Renderer {
+             else {
+                 const ch = inBounds && cp >= 32 ? String.fromCodePoint(cp) : " ";
+                 const style = inBounds
+-                    ? buildCellStyle(cell.fg, cell.bg, cell.flags, cell.fgRgb, cell.bgRgb)
++                    ? buildCellStyle(cell.fg, cell.bg, cell.flags, cell.fgRgb, cell.bgRgb, defaultBg)
+                     : "";
+                 if (style !== runStyle) {
+                     flushRun(col);
+@@ -279,19 +294,6 @@ export class Renderer {
+         }
+         flushRun(this.cols);
+         rowEl.innerHTML = html;
+-        let bgCss = "";
+-        if (lineLen >= this.cols && this.cols > 0) {
+-            const lastCell = getCell(this.cols - 1);
+-            let bgIdx = lastCell.bg;
+-            let bgR = lastCell.bgRgb;
+-            if (lastCell.flags & FLAG_REVERSE) {
+-                bgIdx = lastCell.fg;
+-                bgR = lastCell.fgRgb;
+-                if (bgR === undefined && bgIdx === DEFAULT_COLOR)
+-                    bgIdx = 7;
+-            }
+-            bgCss = cellBgCSS(bgIdx, bgR) || "";
+-        }
+         const boxShadow = bgCss ? `0 1px 0 ${bgCss}` : "";
+         if (rowIndex >= 0) {
+             if (bgCss !== (this.prevRowBg[rowIndex] ?? "")) {
