@@ -96,7 +96,17 @@ export function AsciinemaPlayer({ recordingId, onClose }: { recordingId: string;
   useEffect(() => {
     if (!isTermReady || !header) return;
     resize(header.width, header.height);
-  }, [isTermReady, header, resize]);
+    
+    // Draw first frame
+    if (currentTime === 0 && !isPlaying && eventIndexRef.current === 0 && events.length > 0) {
+      let i = 0;
+      while (i < events.length && events[i][0] <= 0) {
+        if (events[i][1] === "o") write(events[i][2]);
+        i++;
+      }
+      eventIndexRef.current = i;
+    }
+  }, [isTermReady, header, events, resize, write]);
 
   const togglePlay = () => {
     if (currentTime >= duration) {
@@ -211,7 +221,7 @@ export function AsciinemaPlayer({ recordingId, onClose }: { recordingId: string;
         )}
       </div>
 
-      <div className="relative overflow-hidden w-full flex justify-center bg-black p-4">
+      <div className="relative overflow-hidden w-full flex justify-center bg-black p-4 min-h-[500px]">
         {ghosttyCore && (
           <Terminal 
             core={ghosttyCore} 
