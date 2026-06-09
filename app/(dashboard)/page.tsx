@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { ServerStatsPanel } from "@/components/dashboard/ServerStatsPanel";
 import { DashboardOverview } from "@/components/dashboard/DashboardOverview";
 import { DashboardConnections } from "@/components/dashboard/DashboardConnections";
+import { ReplayCenter } from "@/components/dashboard/ReplayCenter";
 import type { ConnectionItem } from "@/components/ConnectionList";
 import { attachMethods } from "@/lib/db/connection-methods";
 import { attachHostInfoSummary } from "@/lib/db/host-info";
@@ -82,6 +83,7 @@ export default async function HomePage() {
       <div className="grid gap-6 lg:grid-cols-3 items-start">
         <div className="lg:col-span-2 space-y-6">
           <DashboardConnections connections={allConnections} pinnedIds={pinnedIds} />
+          <ReplayCenter />
         </div>
         <div className="space-y-6">
           <ConnectionHistory

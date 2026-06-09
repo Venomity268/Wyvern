@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import { type SshConnectionState } from "@/components/SshTerminal";
 
 export interface SessionCredentials {
@@ -41,6 +42,7 @@ export interface TabState {
   sessionState: SshConnectionState;
   shellWs: WebSocket | null;
   sessionCredentials: SessionCredentials | null;
+  isRecording?: boolean;
 }
 
 // Tree Helpers
@@ -226,9 +228,12 @@ interface SessionState {
   tabStates: Record<string, TabState>;
   reconnectKey: number;
   hasStoredCredential: boolean;
+  isBroadcasting: boolean;
 
   // Actions
   initialize: (hasStoredCred: boolean) => void;
+  toggleBroadcasting: () => void;
+  toggleRecording: (paneId: string) => void;
   setActiveTabId: (tabId: string) => void;
   setActivePaneId: (paneId: string) => void;
   updateTabState: (paneId: string, updates: Partial<TabState>) => void;
@@ -254,29 +259,15 @@ interface SessionState {
   reorderTabs: (sourceTabId: string, targetTabId: string) => void;
   movePaneToTab: (paneId: string, sourceTabId: string, targetTabId: string) => void;
   mergeTab: (sourceTabId: string, targetTabId: string) => void;
+  syncLayout: (tabs: TerminalTab[], activeTabId: string, activePaneId: string) => void;
 
   triggerReconnect: () => void;
   triggerDisconnect: (disconnectCb: (termId: string) => void) => void;
 }
 
-export const useSessionStore = create<SessionState>((set) => ({
-  tabs: [
-    {
-      id: "main",
-      title: "Terminal",
-      layout: { id: "main", type: "leaf", componentType: "terminal", title: "Terminal" },
-    },
-  ],
-  activeTabId: "main",
-  activePaneId: "main",
-  allTerminals: [{ id: "main", title: "Terminal" }],
-  tabStates: {},
-  reconnectKey: 0,
-  hasStoredCredential: false,
-
-  initialize: (hasStoredCred) =>
-    set({
-      hasStoredCredential: hasStoredCred,
+export const useSessionStore = create<SessionState>()(
+  persist(
+    (set) => ({
       tabs: [
         {
           id: "main",
@@ -288,14 +279,56 @@ export const useSessionStore = create<SessionState>((set) => ({
       activePaneId: "main",
       allTerminals: [{ id: "main", title: "Terminal" }],
       tabStates: {},
-    }),
+      reconnectKey: 0,
+      hasStoredCredential: false,
+      isBroadcasting: false,
 
-  setActiveTabId: (tabId) =>
-    set((state) => {
-      const tabObj = state.tabs.find((t) => t.id === tabId);
-      const nextPaneId = tabObj ? collectAllIds(tabObj.layout)[0] || "main" : "main";
-      return { activeTabId: tabId, activePaneId: nextPaneId };
-    }),
+      initialize: (hasStoredCred) =>
+        set((state) => {
+          // If we restored from localStorage and have multiple tabs or a modified main tab, don't clobber it
+          if (state.tabs && (state.tabs.length > 1 || state.allTerminals.length > 1)) {
+            return { hasStoredCredential: hasStoredCred };
+          }
+          return {
+            hasStoredCredential: hasStoredCred,
+            tabs: [
+              {
+                id: "main",
+                title: "Terminal",
+                layout: { id: "main", type: "leaf", componentType: "terminal", title: "Terminal" },
+              },
+            ],
+            activeTabId: "main",
+            activePaneId: "main",
+            allTerminals: [{ id: "main", title: "Terminal" }],
+            tabStates: {},
+            isBroadcasting: false,
+          };
+        }),
+
+      toggleBroadcasting: () => set((state) => ({ isBroadcasting: !state.isBroadcasting })),
+
+      toggleRecording: (paneId) => {
+        set((state) => {
+          const currentState = state.tabStates[paneId] || { sessionState: "auth", shellWs: null, sessionCredentials: null };
+          return {
+            tabStates: {
+              ...state.tabStates,
+              [paneId]: {
+                ...currentState,
+                isRecording: !currentState.isRecording,
+              },
+            },
+          };
+        });
+      },
+
+      setActiveTabId: (tabId) =>
+        set((state) => {
+          const tabObj = state.tabs.find((t) => t.id === tabId);
+          const nextPaneId = tabObj ? collectAllIds(tabObj.layout)[0] || "main" : "main";
+          return { activeTabId: tabId, activePaneId: nextPaneId };
+        }),
 
   setActivePaneId: (paneId) => set({ activePaneId: paneId }),
 
@@ -578,6 +611,13 @@ export const useSessionStore = create<SessionState>((set) => ({
       };
     }),
 
+  syncLayout: (tabs, activeTabId, activePaneId) =>
+    set(() => ({
+      tabs,
+      activeTabId,
+      activePaneId,
+    })),
+
   triggerReconnect: () =>
     set((state) => ({
       reconnectKey: state.reconnectKey + 1,
@@ -609,6 +649,18 @@ export const useSessionStore = create<SessionState>((set) => ({
         activePaneId: "main",
         allTerminals: [{ id: "main", title: "Terminal" }],
         tabStates: {},
+        isBroadcasting: false,
       };
     }),
-}));
+    }),
+    {
+      name: "wterm-session-storage",
+      partialize: (state) => ({
+        tabs: state.tabs,
+        activeTabId: state.activeTabId,
+        activePaneId: state.activePaneId,
+        allTerminals: state.allTerminals,
+      }),
+    }
+  )
+);

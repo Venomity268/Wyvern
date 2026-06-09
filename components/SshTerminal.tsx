@@ -10,6 +10,8 @@ import {
   useState,
 } from "react";
 import { Terminal, useTerminal } from "@wterm/react";
+import type { TerminalCore } from "@wterm/dom";
+import { createPortal } from "react-dom";
 import "@wterm/react/css";
 import { createGhosttyCore } from "@/lib/ghostty/shared-core";
 import { Button } from "@/components/ui/button";
@@ -25,6 +27,8 @@ import { installAltScreenRenderPatch } from "@/lib/terminal/alt-screen";
 import { attachTerminalWheel } from "@/lib/terminal/wheel";
 import { afterTerminalDisplaySync, syncTerminalDisplayAfterRender } from "@/lib/terminal/display-sync";
 import { Loader2, X } from "lucide-react";
+import { TerminalSearch } from "@/components/TerminalSearch";
+import { searchTerminalCore, type TerminalSearchMatch } from "@/lib/terminal/search";
 
 interface SshConnectionInfo {
   id: string;
@@ -62,6 +66,10 @@ interface SshTerminalCoreProps {
   /** When false, do not steal focus on connect (e.g. embedded SSH beside a desktop). */
   autoFocusOnConnect?: boolean;
   execCommand?: string;
+  onData?: (data: string) => void;
+  onJsonMessage?: (msg: any) => void;
+  isRecording?: boolean;
+  sessionId?: string;
 }
 
 export interface SshTerminalHandle {
@@ -70,6 +78,7 @@ export interface SshTerminalHandle {
   closeSocket: () => void;
   focus: () => void;
   write: (text: string) => void;
+  getCore: () => TerminalCore | null | undefined;
 }
 
 function useTerminalDimensions(sizeContainerRef?: React.RefObject<HTMLElement | null>) {
@@ -103,6 +112,10 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
       onWebSocketClose,
       onAuthenticated,
       onResize,
+      onData,
+      onJsonMessage,
+      isRecording,
+      sessionId,
       paneVisible = true,
       reportSessionEnd = variant === "page",
       sizeContainerRef,
@@ -177,6 +190,74 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
     const [privateKey, setPrivateKey] = useState("");
     const [authMethod, setAuthMethod] = useState<"password" | "privateKey">("password");
 
+    const [searchVisible, setSearchVisible] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchMatches, setSearchMatches] = useState<TerminalSearchMatch[]>([]);
+    const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+    const [termMetrics, setTermMetrics] = useState({ pl: 12, pt: 12, cw: 8.4, rh: 17 });
+
+    useEffect(() => {
+      if (searchVisible && termRef.current?.instance?.element) {
+        const el = termRef.current.instance.element;
+        const computed = window.getComputedStyle(el);
+        const pl = parseFloat(computed.paddingLeft) || 12;
+        const pt = parseFloat(computed.paddingTop) || 12;
+        const pr = parseFloat(computed.paddingRight) || 12;
+        
+        let rh = 17;
+        const rowEl = el.querySelector('.term-row');
+        if (rowEl) {
+          rh = rowEl.getBoundingClientRect().height;
+        } else {
+          rh = parseFloat(computed.getPropertyValue('--term-row-height')) || 17;
+        }
+
+        const cols = termRef.current.instance.cols || 80;
+        let cw = 8.4;
+        
+        // Find an actual text node span to measure exact character width
+        const spanEl = el.querySelector('.term-row span');
+        if (spanEl && spanEl.textContent?.length) {
+          const rect = spanEl.getBoundingClientRect();
+          cw = rect.width / spanEl.textContent.length;
+        } else {
+          // Fallback measurement element
+          const measureSpan = document.createElement('span');
+          measureSpan.textContent = 'M'.repeat(10);
+          measureSpan.style.visibility = 'hidden';
+          measureSpan.style.position = 'absolute';
+          el.appendChild(measureSpan);
+          cw = measureSpan.getBoundingClientRect().width / 10;
+          el.removeChild(measureSpan);
+        }
+
+        setTermMetrics({ pl, pt, cw, rh });
+      }
+    }, [searchVisible, dimensionsRef.current.cols]);
+
+    useEffect(() => {
+      if (searchVisible && searchMatches.length > 0 && termRef.current?.instance?.element) {
+        const container = termRef.current.instance.element;
+        const el = container.querySelector(`#wterm-search-match-${currentMatchIndex}`);
+        if (el) {
+          el.scrollIntoView({ block: "center" });
+        }
+      }
+    }, [currentMatchIndex, searchVisible, searchMatches.length]);
+
+    const handleSearch = useCallback((query: string) => {
+      setSearchQuery(query);
+      if (!termRef.current?.instance?.bridge) return;
+      if (!query) {
+        setSearchMatches([]);
+        setCurrentMatchIndex(0);
+        return;
+      }
+      const matches = searchTerminalCore(termRef.current.instance.bridge, query);
+      setSearchMatches(matches);
+      setCurrentMatchIndex(0);
+    }, []);
+
     const updateState = useCallback(
       (next: SshConnectionState) => {
         setState(next);
@@ -193,6 +274,7 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
     const animationFrameIdRef = useRef<number | null>(null);
     const inSynchronizedUpdateRef = useRef(false);
     const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const syncBufferRef = useRef<string>("");
 
     const flushQueue = useCallback(() => {
       animationFrameIdRef.current = null;
@@ -209,9 +291,15 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
       for (const chunk of queue) {
         const text = typeof chunk === "string" ? chunk : new TextDecoder("utf-8", { fatal: false }).decode(chunk);
 
+        syncBufferRef.current += text;
+        if (syncBufferRef.current.length > 256) {
+          syncBufferRef.current = syncBufferRef.current.slice(-256);
+        }
+
         // Detect synchronization start (DEC Mode 2026 or DCS synchronization)
-        if (text.includes("\x1b[?2026h") || text.includes("\x1bP=1s") || text.includes("\x1bP=2s")) {
+        if (syncBufferRef.current.includes("\x1b[?2026h") || syncBufferRef.current.includes("\x1bP=1s") || syncBufferRef.current.includes("\x1bP=2s")) {
           inSync = true;
+          syncBufferRef.current = syncBufferRef.current.replace(/\x1b\[\?2026h|\x1bP=1s|\x1bP=2s/g, "");
         }
 
         if (typeof chunk === "string") {
@@ -221,8 +309,9 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
         }
 
         // Detect synchronization end
-        if (text.includes("\x1b[?2026l") || text.includes("\x1bP=0s")) {
+        if (syncBufferRef.current.includes("\x1b[?2026l") || syncBufferRef.current.includes("\x1bP=0s")) {
           inSync = false;
+          syncBufferRef.current = syncBufferRef.current.replace(/\x1b\[\?2026l|\x1bP=0s/g, "");
         }
       }
 
@@ -259,11 +348,28 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
       }
     }, [termRef, syncDisplay]);
 
+    const isRecordingRef = useRef(!!isRecording);
+
+    useEffect(() => {
+      if (isRecording && !isRecordingRef.current) {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          const { cols, rows } = dimensionsRef.current;
+          wsRef.current.send(JSON.stringify({ type: "toggle-recording", cols, rows }));
+        }
+      } else if (!isRecording && isRecordingRef.current) {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: "toggle-recording" }));
+        }
+      }
+      isRecordingRef.current = !!isRecording;
+    }, [isRecording]);
+
     const handleTerminalOutput = useCallback(
       (data: string | Uint8Array) => {
         receivedDataRef.current = true;
         setError("");
         updateQueueRef.current.push(data);
+
         if (animationFrameIdRef.current === null) {
           animationFrameIdRef.current = requestAnimationFrame(flushQueue);
         }
@@ -378,6 +484,7 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
             cols,
             rows,
             mode: "shell",
+            sessionId,
           };
           if (quickSessionId) msg.quickSessionId = quickSessionId;
           else msg.connectionId = connectionId;
@@ -411,7 +518,15 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
           if (data.startsWith("{")) {
             try {
               const msg = JSON.parse(data);
-              if (msg.type?.startsWith("forward-")) return;
+              if (
+                msg.type?.startsWith("forward-") ||
+                msg.type === "layout-sync" ||
+                msg.type === "recording-started" ||
+                msg.type === "recording-stopped"
+              ) {
+                onJsonMessage?.(msg);
+                return;
+              }
               if (msg.error) {
                 if (msg.needsAuth) {
                   updateState("auth");
@@ -497,7 +612,8 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(new TextEncoder().encode(data));
       }
-    }, []);
+      onData?.(data);
+    }, [onData]);
 
     const closeSocket = useCallback(() => {
       intentionalCloseRef.current = true;
@@ -549,8 +665,9 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(text);
         }
-        write(text);
-        syncDisplay();
+      },
+      getCore: () => {
+        return termRef.current?.instance?.bridge;
       },
     }));
 
@@ -663,6 +780,13 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
             if (e.pointerType === "mouse" && e.button !== 0) return;
             if (stateRef.current === "connected") focus();
           }}
+          onKeyDownCapture={(e) => {
+            if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "f") {
+              e.preventDefault();
+              e.stopPropagation();
+              setSearchVisible(true);
+            }
+          }}
         >
           {!chromeless && (
             <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-2 py-1">
@@ -692,6 +816,68 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
                 className="h-full w-full min-h-0"
               />
             ) : null}
+
+            {searchVisible && (
+              <TerminalSearch
+                matchCount={searchMatches.length}
+                currentMatchIndex={currentMatchIndex}
+                onSearch={handleSearch}
+                onNext={() => {
+                  if (searchMatches.length > 0) {
+                    setCurrentMatchIndex((prev) => (prev + 1) % searchMatches.length);
+                  }
+                }}
+                onPrev={() => {
+                  if (searchMatches.length > 0) {
+                    setCurrentMatchIndex((prev) => (prev - 1 + searchMatches.length) % searchMatches.length);
+                  }
+                }}
+                onClose={() => {
+                  setSearchVisible(false);
+                  setSearchMatches([]);
+                  focus();
+                }}
+              />
+            )}
+            {searchVisible && termRef.current?.instance?.element && (() => {
+              const termGrid = termRef.current.instance.element.querySelector('.term-grid') as HTMLElement;
+              if (!termGrid) return null;
+              
+              if (termGrid.style.position !== 'relative') {
+                termGrid.style.position = 'relative';
+              }
+
+              return createPortal(
+                <div className="absolute inset-0 pointer-events-none z-10 overflow-visible" style={{ left: 0, top: 0 }}>
+                  {searchMatches.map((match, i) => {
+                    const targetRow = termGrid.children[match.startRow] as HTMLElement | undefined;
+                    
+                    // Since termGrid is relative, we don't need pt/pl padding offsets!
+                    const top = targetRow ? targetRow.offsetTop : (match.startRow * termMetrics.rh);
+                    const left = match.startCol * termMetrics.cw;
+                    const width = (match.endCol - match.startCol) * termMetrics.cw;
+                    const height = targetRow ? targetRow.offsetHeight : termMetrics.rh;
+
+                    const isActive = i === currentMatchIndex;
+
+                    return (
+                      <div
+                        id={`wterm-search-match-${i}`}
+                        key={`${match.startRow}-${match.startCol}-${i}`}
+                        className={`absolute mix-blend-screen ${isActive ? 'bg-yellow-400/50 outline outline-1 outline-yellow-400 z-20' : 'bg-yellow-500/30'}`}
+                        style={{
+                          top: `${top}px`,
+                          left: `${left}px`,
+                          width: `${width}px`,
+                          height: `${height}px`,
+                        }}
+                      />
+                    );
+                  })}
+                </div>,
+                termGrid
+              );
+            })()}
           </div>
         </div>
       </div>

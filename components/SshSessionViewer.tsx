@@ -16,6 +16,8 @@ import { cn } from "@/lib/utils";
 import { PortForwardPanel, type PortForward } from "@/components/PortForwardPanel";
 import { FileManagerPanel } from "@/components/file-manager/FileManagerPanel";
 import { DockerPanel } from "@/components/DockerPanel";
+import { SnippetPanel } from "@/components/SnippetPanel";
+import { CommandPalette } from "@/components/CommandPalette";
 import { useIsMobile } from "@/lib/hooks/useIsMobile";
 import { useIsTouchDevice } from "@/lib/hooks/useIsTouchDevice";
 import { usePreventBackspaceNavigation } from "@/lib/hooks/usePreventBackspaceNavigation";
@@ -64,7 +66,7 @@ interface SshSessionViewerProps {
   chromeless?: boolean;
 }
 
-type SidePanel = "none" | "ports" | "sftp" | "docker";
+type SidePanel = "none" | "ports" | "sftp" | "docker" | "snippets";
 
 function findPaneIdByType(node: LayoutNode, type: "terminal" | "docker" | "files"): string | null {
   if (node.type === "leaf") {
@@ -115,6 +117,9 @@ const StableTerminalInstance = React.memo(function StableTerminalInstance({
   updateTabState,
   clearTabState,
   resetSidePanels,
+  onData,
+  onJsonMessage,
+  isRecording,
 }: {
   paneId: string;
   execCommand?: string;
@@ -129,6 +134,9 @@ const StableTerminalInstance = React.memo(function StableTerminalInstance({
   updateTabState: (id: string, state: Record<string, unknown>) => void;
   clearTabState: (id: string) => void;
   resetSidePanels: () => void;
+  onData: (data: string, sourcePaneId: string) => void;
+  onJsonMessage: (msg: any, sourcePaneId: string) => void;
+  isRecording?: boolean;
 }) {
   return (
     <SshTerminal
@@ -146,6 +154,8 @@ const StableTerminalInstance = React.memo(function StableTerminalInstance({
       defaultUsername={defaultUsername}
       hasStoredCredential={hasStoredCredential}
       execCommand={execCommand}
+      isRecording={isRecording}
+      sessionId={paneId}
       variant="embedded"
       chromeless
       paneVisible
@@ -169,6 +179,12 @@ const StableTerminalInstance = React.memo(function StableTerminalInstance({
         } else {
           clearTabState(paneId);
         }
+      }}
+      onData={(data) => {
+        onData(data, paneId);
+      }}
+      onJsonMessage={(msg) => {
+        onJsonMessage(msg, paneId);
       }}
     />
   );
@@ -540,6 +556,11 @@ export function SshSessionViewer({
   const reorderTabs = useSessionStore((state) => state.reorderTabs);
   const movePaneToTab = useSessionStore((state) => state.movePaneToTab);
   const mergeTab = useSessionStore((state) => state.mergeTab);
+  const isBroadcasting = useSessionStore((state) => state.isBroadcasting);
+  const toggleBroadcasting = useSessionStore((state) => state.toggleBroadcasting);
+  const toggleRecording = useSessionStore((state) => state.toggleRecording);
+  const syncLayout = useSessionStore((state) => state.syncLayout);
+  const isSyncingLayoutRef = useRef(false);
 
   const [sidePanel, setSidePanel] = useState<SidePanel>("none");
   const [portOverlay, setPortOverlay] = useState(false);
@@ -624,6 +645,55 @@ export function SshSessionViewer({
       createNewTab(undefined, "Docker", "docker");
     }
   };
+
+  const toggleSnippets = () => {
+    if (!isMainConnected) return;
+    setSidePanel((p) => (p === "snippets" ? "none" : "snippets"));
+  };
+
+  const handleData = useCallback(
+    (data: string, sourcePaneId: string) => {
+      if (!isBroadcasting) return;
+      if (sourcePaneId !== activePaneId) return; // Only broadcast from active pane
+      
+      const allTerminals = terminalRefs.current;
+      if (!allTerminals) return;
+
+      // Broadcast to all terminals EXCEPT the source
+      for (const [id, terminal] of allTerminals.entries()) {
+        if (id !== sourcePaneId) {
+          terminal.write(data);
+        }
+      }
+    },
+    [isBroadcasting, activePaneId]
+  );
+
+  const handleJsonMessage = useCallback(
+    (msg: any, sourcePaneId: string) => {
+      if (msg.type === "layout-sync" && msg.payload) {
+        if (sourcePaneId === "main") {
+          isSyncingLayoutRef.current = true;
+          syncLayout(msg.payload.tabs, msg.payload.activeTabId, msg.payload.activePaneId);
+          setTimeout(() => {
+            isSyncingLayoutRef.current = false;
+          }, 100);
+        }
+      }
+    },
+    [syncLayout]
+  );
+
+  useEffect(() => {
+    if (!mounted || !isMainConnected) return;
+    if (isSyncingLayoutRef.current) return;
+
+    const mainTerminal = terminalRefs.current.get("main");
+    if (!mainTerminal) return;
+
+    // Send layout sync whenever layout changes
+    mainTerminal.write(JSON.stringify({ type: "layout-sync", payload: { tabs, activeTabId, activePaneId } }));
+  }, [tabs, activeTabId, activePaneId, isMainConnected, mounted]);
 
   const toggleFullscreen = () => {
     const el = containerRef.current;
@@ -901,6 +971,10 @@ export function SshSessionViewer({
           onClose={() => setSidePanel("none")}
         />
       </div>
+    ) : sidePanel === "snippets" ? (
+      <div className="h-full w-full overflow-hidden">
+        <SnippetPanel terminalRefs={terminalRefs} activePaneId={activePaneId} />
+      </div>
     ) : null;
 
   const activeTerminal = terminalRefs.current.get(activePaneId);
@@ -953,12 +1027,18 @@ export function SshSessionViewer({
         portForwardOpen={sidePanel === "ports" || portOverlay}
         sftpOpen={sftpOpen}
         dockerOpen={dockerOpen}
+        snippetsOpen={sidePanel === "snippets"}
+        isBroadcasting={isBroadcasting}
+        isRecording={activePaneState.isRecording}
         showPortForward={canPortForward}
         onToggleFullscreen={toggleFullscreen}
         onToggleClipboard={() => setClipboardOpen((v) => !v)}
         onTogglePortForward={togglePortForward}
         onToggleSftp={toggleSftp}
         onToggleDocker={toggleDocker}
+        onToggleSnippets={toggleSnippets}
+        onToggleBroadcasting={toggleBroadcasting}
+        onToggleRecording={() => toggleRecording(activePaneId)}
         onReconnect={handleReconnect}
         onDisconnect={handleDisconnect}
         onFocusTerminal={() => activeTerminal?.focus()}
@@ -1169,6 +1249,9 @@ export function SshSessionViewer({
                         updateTabState={updateTabState}
                         clearTabState={clearTabState}
                         resetSidePanels={resetSidePanels}
+                        onData={handleData}
+                        onJsonMessage={handleJsonMessage}
+                        isRecording={tabStates[pane.id]?.isRecording}
                       />
                     </div>
                   ))}
@@ -1182,7 +1265,7 @@ export function SshSessionViewer({
           isMobile={isMobile}
           primaryTabLabel="Terminal"
           secondaryTabLabel={
-            sidePanel === "sftp" ? "Files" : sidePanel === "ports" ? "Ports" : "Docker"
+            sidePanel === "sftp" ? "Files" : sidePanel === "ports" ? "Ports" : sidePanel === "snippets" ? "Snippets" : "Docker"
           }
         />
 
@@ -1222,6 +1305,7 @@ export function SshSessionViewer({
       tabs={sessionTabs}
     >
       {sessionBody}
+      <CommandPalette />
     </SessionLayout>
   );
 }

@@ -13,6 +13,9 @@ import {
   Minimize,
   Network,
   RefreshCw,
+  Code2,
+  RadioTower,
+  Video,
 } from "lucide-react";
 import { useIsTouchDevice } from "@/lib/hooks/useIsTouchDevice";
 import { SessionToolButton, SessionToolDivider } from "@/components/session/SessionToolButton";
@@ -23,12 +26,18 @@ interface SshToolbarProps {
   portForwardOpen: boolean;
   sftpOpen: boolean;
   dockerOpen: boolean;
+  snippetsOpen: boolean;
+  isBroadcasting?: boolean;
+  isRecording?: boolean;
   showPortForward?: boolean;
   onToggleFullscreen: () => void;
   onToggleClipboard: () => void;
   onTogglePortForward: () => void;
   onToggleSftp: () => void;
   onToggleDocker: () => void;
+  onToggleSnippets: () => void;
+  onToggleBroadcasting?: () => void;
+  onToggleRecording?: () => void;
   onReconnect: () => void;
   onDisconnect: () => void;
   onFocusTerminal?: () => void;
@@ -40,12 +49,18 @@ export function SshToolbar({
   portForwardOpen,
   sftpOpen,
   dockerOpen,
+  snippetsOpen,
+  isBroadcasting,
+  isRecording,
   showPortForward = true,
   onToggleFullscreen,
   onToggleClipboard,
   onTogglePortForward,
   onToggleSftp,
   onToggleDocker,
+  onToggleSnippets,
+  onToggleBroadcasting,
+  onToggleRecording,
   onReconnect,
   onDisconnect,
   onFocusTerminal,
@@ -74,8 +89,31 @@ export function SshToolbar({
       <SessionToolButton active={dockerOpen} title="Docker containers" onClick={onToggleDocker}>
         <Box className="h-4 w-4" />
       </SessionToolButton>
+      <SessionToolButton active={snippetsOpen} title="Command Snippets" onClick={onToggleSnippets}>
+        <Code2 className="h-4 w-4" />
+      </SessionToolButton>
 
       <SessionToolDivider />
+
+      {onToggleBroadcasting && (
+        <SessionToolButton
+          active={isBroadcasting}
+          title={isBroadcasting ? "Stop Broadcasting Input" : "Broadcast Input to All Panes"}
+          onClick={onToggleBroadcasting}
+        >
+          <RadioTower className={`h-4 w-4 ${isBroadcasting ? "text-red-400" : ""}`} />
+        </SessionToolButton>
+      )}
+
+      {onToggleRecording && (
+        <SessionToolButton
+          active={isRecording}
+          title={isRecording ? "Stop Recording (Export .cast)" : "Start Recording Session"}
+          onClick={onToggleRecording}
+        >
+          <Video className={`h-4 w-4 ${isRecording ? "text-red-400 animate-pulse" : ""}`} />
+        </SessionToolButton>
+      )}
 
       <SessionToolButton
         active={clipboardOpen}
