@@ -982,15 +982,6 @@ export function SshSessionViewer({
     viewport.addEventListener("pointerdown", onPointerDown);
     return () => viewport.removeEventListener("pointerdown", onPointerDown);
   }, [activePaneId, isMainConnected, isTouchDevice]);
-
-  if (!mounted) {
-    return (
-      <div className="flex items-center justify-center h-full w-full bg-background text-muted text-sm">
-        Loading session...
-      </div>
-    );
-  }
-
   const canPortForward = Boolean(connectionId) && !isMobile;
 
   const secondary =
@@ -1057,6 +1048,14 @@ export function SshSessionViewer({
     }),
     [connectionId, quickSessionId, connectionName, hostname, protocol, defaultUsername, hasStoredCredential, tabStates, mainState.sessionCredentials, sessionCredentials, isMainConnected]
   );
+
+  if (!mounted) {
+    return (
+      <div className="flex items-center justify-center h-full w-full bg-background text-muted text-sm">
+        Loading session...
+      </div>
+    );
+  }
 
   const sessionEndpoint = `${defaultUsername ? `${defaultUsername}@` : ""}${hostname}`;
   const sessionStatus =
