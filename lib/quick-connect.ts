@@ -6,6 +6,7 @@ import { encryptSecret, decryptSecret } from "./crypto/secrets";
 import type { ConnectionProtocol } from "./protocols";
 import { defaultPort } from "./protocols";
 import type { ResolvedSshConnection, SshAuthParams } from "./bridges/ssh-connect";
+import { normalizeConnectionTarget } from "./connection-target";
 
 const QUICK_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -43,8 +44,9 @@ export function createQuickSession(
   const id = uuidv4();
   const now = Date.now();
   const expiresAt = new Date(now + QUICK_SESSION_TTL_MS).toISOString();
-  const port = input.port ?? defaultPort(input.protocol);
-  const label = input.label?.trim() || input.hostname.trim();
+  const normalized = normalizeConnectionTarget(input.hostname, input.port ?? defaultPort(input.protocol));
+  const port = normalized.port ?? input.port ?? defaultPort(input.protocol);
+  const label = input.label?.trim() || normalized.hostname;
 
   db.prepare(
     `INSERT INTO quick_sessions
@@ -54,7 +56,7 @@ export function createQuickSession(
     id,
     userId,
     label,
-    input.hostname.trim(),
+    normalized.hostname,
     port,
     input.protocol,
     input.username?.trim() || null,
@@ -191,11 +193,13 @@ export function resolveQuickGuac(
     return { error: "Password required", needsAuth: true };
   }
 
+  const target = normalizeConnectionTarget(session.hostname, session.port);
+
   return {
     quickSessionId: session.id,
     label: session.label,
-    hostname: session.hostname,
-    port: session.port,
+    hostname: target.hostname,
+    port: target.port ?? session.port,
     protocol: session.protocol,
     username,
     password,

@@ -23,6 +23,7 @@ export function useSftpClient(
   quickSessionId: string | undefined,
   hasStoredCredential: boolean,
   sessionAuth?: SessionAuth | null,
+  sshConnected = false,
 ) {
   const [client] = useState(() => new SftpClient());
   const [ready, setReady] = useState(false);
@@ -77,17 +78,31 @@ export function useSftpClient(
   );
 
   useEffect(() => {
+    if (ready) return;
+    setNeedsAuth(!canAutoConnectSftp(hasStoredCredential, sessionAuth));
+  }, [hasStoredCredential, sessionAuth, ready]);
+
+  useEffect(() => {
     let timeout: ReturnType<typeof setTimeout>;
-    if (canAutoConnectSftp(hasStoredCredential, sessionAuth)) {
-      timeout = setTimeout(() => {
-        void connect();
-      }, 0);
-    }
+    if (!canAutoConnectSftp(hasStoredCredential, sessionAuth)) return;
+    if (!hasStoredCredential && !sshConnected) return;
+
+    timeout = setTimeout(() => {
+      void connect();
+    }, 0);
     return () => {
       clearTimeout(timeout);
       client.disconnect();
     };
-  }, [connectionId, quickSessionId, client, connect, hasStoredCredential, sessionAuth]);
+  }, [
+    connectionId,
+    quickSessionId,
+    client,
+    connect,
+    hasStoredCredential,
+    sessionAuth,
+    sshConnected,
+  ]);
 
   return {
     client,

@@ -144,7 +144,7 @@ export function QuickConnectForm() {
             <Label htmlFor="qc-user">
               Username
               {protocol === "vnc"
-                ? " (optional on some VNC servers)"
+                ? " (macOS: use your Mac login name)"
                 : protocol === "ssh"
                   ? " (Ubuntu login name)"
                   : ""}

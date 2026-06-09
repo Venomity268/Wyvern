@@ -49,6 +49,7 @@ interface PaneSessionProps {
     password?: string;
     privateKey?: string;
   } | null;
+  sshConnected: boolean;
   updateTabState: (id: string, state: Record<string, unknown>) => void;
   clearTabState: (id: string) => void;
   resetSidePanels: () => void;
@@ -324,6 +325,7 @@ const PaneLayout = ({
               defaultUsername={session.defaultUsername}
               hasStoredCredential={session.hasStoredCredential}
               sessionAuth={session.sessionCredentials}
+              sshConnected={session.sshConnected}
               onClose={() => onClosePane(node.id)}
             />
           )}
@@ -1002,7 +1004,8 @@ export function SshSessionViewer({
     defaultUsername,
     hasStoredCredential,
     terminalRefs,
-    sessionCredentials,
+    sessionCredentials: mainState.sessionCredentials ?? sessionCredentials,
+    sshConnected: isMainConnected,
     updateTabState,
     clearTabState,
     resetSidePanels,

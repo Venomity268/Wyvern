@@ -8,7 +8,10 @@ import { getMethodPort, resolveGuacMethodCredential } from "@/lib/db/connection-
 import { resolveQuickGuac } from "@/lib/quick-connect";
 import { defaultPort, type GuacProtocol } from "@/lib/protocols";
 import { guacRdpConnectionSettings } from "@/lib/guac/rdp-settings";
+import { guacVncConnectionSettings } from "@/lib/guac/vnc-settings";
 import { resolveGuacdHostname } from "@/lib/guac/resolve-hostname";
+import { normalizeConnectionTarget } from "@/lib/connection-target";
+import { probeTcpPort } from "@/lib/host-reachability";
 
 async function withGuacdHostname(
   settings: Record<string, string | number | boolean>,
@@ -20,14 +23,14 @@ async function withGuacdHostname(
   return { ...settings, hostname: resolved };
 }
 
-function guacDisplaySettings(width: number, height: number) {
-  return {
-    width,
-    height,
-    dpi: 96,
-    "color-depth": 32,
-    "resize-method": "display-update",
-  };
+async function assertDesktopReachable(hostname: string, port: number) {
+  const resolved = await resolveGuacdHostname(hostname);
+  const reachable = await probeTcpPort(resolved, port, 5000);
+  if (!reachable) {
+    throw new Error(
+      `Cannot reach ${hostname}:${port}. Enable Screen Sharing on the Mac, confirm it is awake, and verify this machine can reach it (Tailscale/VPN/firewall).`,
+    );
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -60,27 +63,25 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      const target = normalizeConnectionTarget(resolved.hostname, resolved.port);
+      const connectPort = target.port ?? resolved.port;
+
+      await assertDesktopReachable(target.hostname, connectPort);
+
       const settings: Record<string, string | number | boolean> =
         resolved.protocol === "rdp"
           ? guacRdpConnectionSettings(displayWidth, displayHeight, {
-              hostname: resolved.hostname,
-              port: resolved.port,
+              hostname: target.hostname,
+              port: connectPort,
               username: resolved.username!,
               password: resolved.password!,
             })
-          : {
-              hostname: resolved.hostname,
-              port: String(resolved.port),
+          : guacVncConnectionSettings(displayWidth, displayHeight, {
+              hostname: target.hostname,
+              port: connectPort,
               password: resolved.password!,
-              ...guacDisplaySettings(displayWidth, displayHeight),
-            };
-
-      if (resolved.protocol === "vnc") {
-        settings["clipboard-encoding"] = "UTF-8";
-        if (resolved.username) {
-          settings.username = resolved.username;
-        }
-      }
+              username: resolved.username,
+            });
 
       const token = encryptGuacToken({
         connection: { type: resolved.protocol, settings: await withGuacdHostname(settings) },
@@ -197,27 +198,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const target = normalizeConnectionTarget(connection.hostname, port);
+    const connectPort = target.port ?? port;
+
+    await assertDesktopReachable(target.hostname, connectPort);
+
     const settings: Record<string, string | number | boolean> =
       protocol === "rdp"
         ? guacRdpConnectionSettings(displayWidth, displayHeight, {
-            hostname: connection.hostname,
-            port,
+            hostname: target.hostname,
+            port: connectPort,
             username: username!,
             password,
           })
-        : {
-            hostname: connection.hostname,
-            port: String(port),
+        : guacVncConnectionSettings(displayWidth, displayHeight, {
+            hostname: target.hostname,
+            port: connectPort,
             password,
-            ...guacDisplaySettings(displayWidth, displayHeight),
-          };
-
-    if (protocol === "vnc") {
-      settings["clipboard-encoding"] = "UTF-8";
-      if (username) {
-        settings.username = username;
-      }
-    }
+            username,
+          });
 
     const token = encryptGuacToken({
       connection: {
@@ -239,6 +238,9 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     if (err instanceof Error && err.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (err instanceof Error && err.message.startsWith("Cannot reach")) {
+      return NextResponse.json({ error: err.message }, { status: 502 });
     }
     console.error("[guac/token]", err);
     return NextResponse.json(

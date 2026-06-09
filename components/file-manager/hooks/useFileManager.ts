@@ -55,8 +55,15 @@ export function useFileManager(
   quickSessionId: string | undefined,
   hasStoredCredential: boolean,
   sessionAuth?: SessionAuth | null,
+  sshConnected = false,
 ) {
-  const sftp = useSftpClient(connectionId, quickSessionId, hasStoredCredential, sessionAuth);
+  const sftp = useSftpClient(
+    connectionId,
+    quickSessionId,
+    hasStoredCredential,
+    sessionAuth,
+    sshConnected,
+  );
   const [path, setPath] = useState("");
   const [entries, setEntries] = useState<SftpEntry[]>([]);
   const [loading, setLoading] = useState(false);

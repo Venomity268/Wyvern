@@ -20,6 +20,7 @@ interface FileManagerPanelProps {
   defaultUsername?: string | null;
   hasStoredCredential: boolean;
   sessionAuth?: SessionAuth | null;
+  sshConnected?: boolean;
   onClose?: () => void;
 }
 
@@ -29,9 +30,16 @@ export function FileManagerPanel({
   defaultUsername,
   hasStoredCredential,
   sessionAuth,
+  sshConnected = false,
   onClose,
 }: FileManagerPanelProps) {
-  const fm = useFileManager(connectionId, quickSessionId, hasStoredCredential, sessionAuth);
+  const fm = useFileManager(
+    connectionId,
+    quickSessionId,
+    hasStoredCredential,
+    sessionAuth,
+    sshConnected,
+  );
   const isMobile = useIsMobile();
   const [username, setUsername] = useState(defaultUsername || sessionAuth?.username || "");
   const [password, setPassword] = useState("");
@@ -108,6 +116,26 @@ export function FileManagerPanel({
       <div className="flex h-full items-center justify-center gap-2 p-3 text-sm text-zinc-400">
         <Loader2 className="h-4 w-4 animate-spin" />
         Connecting…
+      </div>
+    );
+  }
+
+  if (!fm.ready && fm.error && !fm.needsAuth) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
+        <p className="text-sm font-medium text-zinc-100">Could not connect to SFTP</p>
+        <p className="max-w-sm text-sm text-red-400">{fm.error}</p>
+        <Button size="sm" onClick={() => void fm.connect()} disabled={fm.connecting}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (!fm.ready && !fm.needsAuth && !hasStoredCredential && !sshConnected) {
+    return (
+      <div className="flex h-full items-center justify-center p-4 text-center text-sm text-zinc-400">
+        Connect the SSH session first, then open Files.
       </div>
     );
   }

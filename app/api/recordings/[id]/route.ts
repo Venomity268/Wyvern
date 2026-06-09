@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/index";
 import fs from "fs";
-import path from "path";
+import { getRecordingCastPath, recordingFileExists } from "@/lib/recordings/paths";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
@@ -27,8 +27,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: "Not Found" }, { status: 404 });
     }
 
-    const castPath = path.join(process.cwd(), "data", "recordings", `${id}.cast`);
-    if (!fs.existsSync(castPath)) {
+    const castPath = getRecordingCastPath(id);
+    if (!recordingFileExists(id)) {
+      db.prepare("DELETE FROM recordings WHERE id = ?").run(id);
       console.log("File not found on disk:", castPath);
       return NextResponse.json({ error: "File not found on disk" }, { status: 404 });
     }
@@ -70,7 +71,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json({ error: "Not Found" }, { status: 404 });
     }
 
-    const castPath = path.join(process.cwd(), "data", "recordings", `${id}.cast`);
+    const castPath = getRecordingCastPath(id);
     if (fs.existsSync(castPath)) {
       fs.unlinkSync(castPath);
     }

@@ -293,6 +293,8 @@ export function GuacamoleViewer({
         if (attempt !== connectAttemptRef.current) return;
 
         const tunnel: GuacTunnel = new Guacamole.WebSocketTunnel(wsUrl("/api/guac"));
+        tunnel.receiveTimeout = 45000;
+        tunnel.unstableThreshold = 10000;
         tunnelRef.current = tunnel;
         const client = new Guacamole.Client(tunnel);
         clientRef.current = client;
@@ -350,14 +352,26 @@ export function GuacamoleViewer({
         tunnel.onerror = (status: { message?: string }) => {
           if (attempt !== connectAttemptRef.current) return;
           resetSidePanels();
-          setError(status.message || "Desktop tunnel error");
+          let msg = status.message || "Desktop tunnel error";
+          if (msg === "Server timeout." && protocol === "vnc") {
+            msg =
+              "VNC connection timed out. For macOS Screen Sharing, try your Mac username and login password, or set a dedicated VNC password under System Settings → General → Sharing → Screen Sharing → Info.";
+          } else if (msg === "Server timeout.") {
+            msg = "Desktop connection timed out. Check that the host is awake and reachable.";
+          }
+          setError(msg);
           setState("auth");
         };
 
         client.onerror = (status: { message?: string }) => {
           if (attempt !== connectAttemptRef.current) return;
           resetSidePanels();
-          setError(status.message || "Desktop connection failed");
+          let msg = status.message || "Desktop connection failed";
+          if (/unable to connect|authentication|auth/i.test(msg) && protocol === "vnc") {
+            msg =
+              `${msg}. For macOS, use your Mac username and login password, or a dedicated VNC password from Screen Sharing settings.`;
+          }
+          setError(msg);
           setState("auth");
         };
 
@@ -817,7 +831,7 @@ export function GuacamoleViewer({
             {showVncUsername && (
               <div className="space-y-2">
                 <Label htmlFor="desktop-username" className="text-zinc-300">
-                  Username <span className="text-zinc-500">(optional on some VNC servers)</span>
+                  Username <span className="text-zinc-500">(macOS: use your Mac login name)</span>
                 </Label>
                 <Input
                   id="desktop-username"

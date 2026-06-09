@@ -1,12 +1,9 @@
 import { WebSocket } from "ws";
 import { Client } from "ssh2";
 import { getDb } from "../db/index";
-import { resolveSshConnection } from "./ssh-connect";
-import { resolveQuickSsh } from "../quick-connect";
 import { SessionUser } from "../auth/session-options";
 import { v4 as uuidv4 } from "uuid";
 import fs from "fs";
-import path from "path";
 import {
   getForwardListenHost,
   startSshForward,
@@ -14,38 +11,10 @@ import {
   stopSshForward,
   type SshForward,
 } from "./ssh-forwards";
+import { connectSshClient, resolveSshConnection } from "./ssh-connect";
+import { resolveQuickSsh } from "../quick-connect";
 import { registerSession, unregisterSession } from "../sessions/registry";
-import { normalizePrivateKeyForSsh2 } from "../ssh/ssh-keys";
-
-class InMemoryVaultAgent extends (require("ssh2").BaseAgent as any) {
-  private keys: any[];
-
-  constructor(keys: any[]) {
-    super();
-    this.keys = keys;
-  }
-
-  getIdentities(cb: (err: any, keys: any[]) => void) {
-    const identities = this.keys.map((k: any) => ({
-      pubKey: k.getPublicSSH(),
-      comment: "in-memory-vault-key",
-    }));
-    cb(null, identities);
-  }
-
-  sign(pubKey: Buffer, data: Buffer, cb: (err: any, signature: Buffer) => void) {
-    const key = this.keys.find((k: any) => k.getPublicSSH().equals(pubKey));
-    if (!key) {
-      return cb(new Error("Key not found in vault"), null as any);
-    }
-    try {
-      const signature = key.sign(data);
-      cb(null, signature);
-    } catch (err) {
-      cb(err, null as any);
-    }
-  }
-}
+import { getRecordingCastPath, recordingFileExists } from "../recordings/paths";
 
 const IDLE_TIMEOUT_MS = 8 * 60 * 60 * 1000;
 const MAX_SCROLLBACK = 200000;
@@ -90,6 +59,15 @@ function sendJson(ws: WebSocket, payload: Record<string, unknown>) {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
   }
+}
+
+/** Hub key must be scoped to the connection; pane ids like "main" are not globally unique. */
+function resolveHubKey(params: SshInitMessage): string | null {
+  const targetId = params.quickSessionId || params.connectionId;
+  if (targetId && params.sessionId) {
+    return `${targetId}:${params.sessionId}`;
+  }
+  return targetId || params.sessionId || null;
 }
 
 class SessionHub {
@@ -325,47 +303,86 @@ class SessionHub {
   }
 
   startRecording(cols: number = 120, rows: number = 40) {
-    if (!this.historyId) return;
-    this.recordingId = uuidv4();
-    this.recordingStartTime = Date.now();
-    const p = path.join(process.cwd(), "data", "recordings", `${this.recordingId}.cast`);
-    this.recordingStream = fs.createWriteStream(p, { flags: "w" });
-    const header = {
-      version: 2,
-      width: cols,
-      height: rows,
-      timestamp: Math.floor(Date.now() / 1000),
-      env: { TERM: "xterm-256color" }
-    };
-    this.recordingStream.write(JSON.stringify(header) + "\n");
+    if (!this.historyId || this.recordingStream) return;
+    const recordingId = uuidv4();
+    const castPath = getRecordingCastPath(recordingId);
 
-    if (this.scrollback.length > 0) {
-      const scrollbackText = Buffer.concat(this.scrollback).toString("utf8");
-      if (scrollbackText) {
-        const entry = [0.001, "o", scrollbackText];
-        this.recordingStream.write(JSON.stringify(entry) + "\n");
+    try {
+      const stream = fs.createWriteStream(castPath, { flags: "w" });
+      stream.on("error", (err) => {
+        console.error("Recording write error", err);
+        if (this.recordingId === recordingId) {
+          this.recordingStream = null;
+          this.recordingId = null;
+          this.recordingStartTime = null;
+          this.broadcastJson({
+            type: "recording-error",
+            error: err instanceof Error ? err.message : "Recording failed",
+          });
+        }
+      });
+
+      this.recordingId = recordingId;
+      this.recordingStartTime = Date.now();
+      this.recordingStream = stream;
+
+      const header = {
+        version: 2,
+        width: cols,
+        height: rows,
+        timestamp: Math.floor(Date.now() / 1000),
+        env: { TERM: "xterm-256color" },
+      };
+      stream.write(JSON.stringify(header) + "\n");
+
+      if (this.scrollback.length > 0) {
+        const scrollbackText = Buffer.concat(this.scrollback).toString("utf8");
+        if (scrollbackText) {
+          const entry = [0.001, "o", scrollbackText];
+          stream.write(JSON.stringify(entry) + "\n");
+        }
       }
-    }
 
-    this.broadcastJson({ type: "recording-started", recordingId: this.recordingId });
+      this.broadcastJson({ type: "recording-started", recordingId });
+    } catch (err) {
+      console.error("Failed to start recording", err);
+      this.recordingStream = null;
+      this.recordingId = null;
+      this.recordingStartTime = null;
+      this.broadcastJson({
+        type: "recording-error",
+        error: err instanceof Error ? err.message : "Recording failed",
+      });
+    }
   }
 
   stopRecording() {
-    if (this.recordingStream && this.recordingId && this.historyId) {
-      this.recordingStream.end();
-      this.recordingStream = null;
-      const duration = this.recordingStartTime ? (Date.now() - this.recordingStartTime) / 1000 : 0;
+    if (!this.recordingStream || !this.recordingId || !this.historyId) return;
+
+    const recordingId = this.recordingId;
+    const historyId = this.historyId;
+    const duration = this.recordingStartTime ? (Date.now() - this.recordingStartTime) / 1000 : 0;
+    const stream = this.recordingStream;
+
+    this.recordingStream = null;
+    this.recordingId = null;
+    this.recordingStartTime = null;
+
+    stream.end(() => {
+      if (!recordingFileExists(recordingId)) {
+        console.warn("Recording file missing or empty, skipping metadata save:", recordingId);
+        return;
+      }
+
       try {
-        getDb().prepare("INSERT INTO recordings (id, history_id, name, duration) VALUES (?, ?, ?, ?)").run(
-          this.recordingId, this.historyId, `Recording ${new Date().toLocaleString()}`, duration
-        );
+        getDb()
+          .prepare("INSERT INTO recordings (id, history_id, name, duration) VALUES (?, ?, ?, ?)")
+          .run(recordingId, historyId, `Recording ${new Date().toLocaleString()}`, duration);
+        this.broadcastJson({ type: "recording-stopped", recordingId });
       } catch (e) {
         console.error("Failed to save recording metadata", e);
       }
-      this.broadcastJson({ type: "recording-stopped", recordingId: this.recordingId });
-      this.recordingId = null;
-      this.recordingStartTime = null;
-    }
+    });
   }
 
   resetIdleTimer() {
@@ -427,7 +444,7 @@ export function handleSshConnection(ws: WebSocket, user: SessionUser) {
       return;
     }
 
-    const sessionId = params.sessionId || params.connectionId || params.quickSessionId;
+    const sessionId = resolveHubKey(params);
     if (!sessionId) {
       ws.send(JSON.stringify({ error: "Missing connection or session ID" }));
       ws.close();
@@ -473,10 +490,6 @@ export function handleSshConnection(ws: WebSocket, user: SessionUser) {
     hub.addSocket(ws);
 
     const connection = resolved.connection;
-    const username = resolved.username;
-    const password = resolved.password;
-    const privateKey = resolved.privateKey;
-    const passphrase = resolved.passphrase;
 
     hub.historyId = uuidv4();
     const isQuick = !!params.quickSessionId;
@@ -508,106 +521,68 @@ export function handleSshConnection(ws: WebSocket, user: SessionUser) {
       userId: user.id,
     });
 
-    const sshClient = new Client();
-    hub.sshClient = sshClient;
+    const cols = params.cols || 120;
+    const rows = params.rows || 40;
 
-    sshClient.on("ready", () => {
-      if (mode === "tunnel") {
-        hub.broadcastJson({ type: "ready", listenHost: getForwardListenHost() });
+    const handleStream = (err: Error | undefined, stream: import("ssh2").ClientChannel) => {
+      if (err) {
+        const errMsg = params.execCommand
+          ? `Failed to execute command: ${err.message}`
+          : `Failed to open shell: ${err.message}`;
+        hub.broadcast(Buffer.from(`\r\n\x1b[31m${errMsg}\x1b[0m\r\n`));
+        hub.cleanup("error", err.message);
         return;
       }
 
-      const cols = params.cols || 120;
-      const rows = params.rows || 40;
+      hub.shellStream = stream;
 
-      const handleStream = (err: Error | undefined, stream: import("ssh2").ClientChannel) => {
-        if (err) {
-          const errMsg = params.execCommand
-            ? `Failed to execute command: ${err.message}`
-            : `Failed to open shell: ${err.message}`;
-          hub.broadcast(Buffer.from(`\r\n\x1b[31m${errMsg}\x1b[0m\r\n`));
-          hub.cleanup("error", err.message);
+      stream.on("data", (chunk: Buffer) => {
+        hub.resetIdleTimer();
+        hub.appendScrollback(chunk);
+        hub.broadcast(chunk);
+      });
+
+      stream.on("close", () => {
+        hub.cleanup("completed");
+      });
+    };
+
+    const sshClient = connectSshClient(
+      resolved,
+      (client) => {
+        if (mode === "tunnel") {
+          hub.broadcastJson({ type: "ready", listenHost: getForwardListenHost() });
           return;
         }
 
-        hub.shellStream = stream;
-
-        stream.on("data", (chunk: Buffer) => {
-          hub.resetIdleTimer();
-          hub.appendScrollback(chunk);
-          hub.broadcast(chunk);
-        });
-
-        stream.on("close", () => {
-          hub.cleanup("completed");
-        });
-      };
-
-      if (params.execCommand) {
-        sshClient.exec(
-          params.execCommand,
-          { pty: { term: "xterm-256color", cols, rows } },
-          handleStream,
-        );
-      } else {
-        sshClient.shell(
-          { term: "xterm-256color", cols, rows },
-          handleStream,
-        );
-      }
-    });
-
-    sshClient.on("error", (err) => {
-      const msg = Buffer.from(`\r\n\x1b[31mSSH error: ${err.message}\x1b[0m\r\n`);
-      if (mode === "tunnel") {
-        hub.broadcastJson({ error: err.message });
-      } else {
-        hub.broadcast(msg);
-      }
-      hub.cleanup("error", err.message);
-    });
+        if (params.execCommand) {
+          client.exec(
+            params.execCommand,
+            { pty: { term: "xterm-256color", cols, rows } },
+            handleStream,
+          );
+        } else {
+          client.shell(
+            { term: "xterm-256color", cols, rows },
+            handleStream,
+          );
+        }
+      },
+      (err) => {
+        const msg = Buffer.from(`\r\n\x1b[31mSSH error: ${err.message}\x1b[0m\r\n`);
+        if (mode === "tunnel") {
+          hub.broadcastJson({ error: err.message });
+        } else {
+          hub.broadcast(msg);
+        }
+        hub.cleanup("error", err.message);
+      },
+    );
+    hub.sshClient = sshClient;
 
     sshClient.on("close", () => {
       hub.cleanup("completed");
     });
-
-    const connectConfig: Record<string, unknown> = {
-      host: connection.hostname,
-      port: connection.port || 22,
-      username,
-    };
-
-    if (privateKey) {
-      try {
-        const normalized = normalizePrivateKeyForSsh2(privateKey);
-        const parsedKey = require("ssh2").utils.parseKey(normalized, passphrase);
-        if (!(parsedKey instanceof Error)) {
-          connectConfig.privateKey = parsedKey;
-          connectConfig.agent = new InMemoryVaultAgent([parsedKey]);
-          connectConfig.agentForward = true;
-        } else {
-          connectConfig.privateKey = normalized;
-          if (passphrase) connectConfig.passphrase = passphrase;
-        }
-      } catch {
-        connectConfig.privateKey = normalizePrivateKeyForSsh2(privateKey);
-        if (passphrase) connectConfig.passphrase = passphrase;
-      }
-    } else if (password) {
-      connectConfig.password = password;
-    }
-
-    try {
-      sshClient.connect(connectConfig);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "SSH connect failed";
-      if (mode === "tunnel") {
-        hub.broadcastJson({ error: message });
-      } else {
-        hub.broadcast(Buffer.from(`\r\n\x1b[31mSSH error: ${message}\x1b[0m\r\n`));
-      }
-      hub.cleanup("error", message);
-    }
   }
 
   ws.on("message", onFirstMessage);

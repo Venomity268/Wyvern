@@ -156,6 +156,10 @@ export function connectSshClient(
     if (resolved.passphrase) connectConfig.passphrase = resolved.passphrase;
   } else if (resolved.password) {
     connectConfig.password = resolved.password;
+    connectConfig.tryKeyboard = true;
+    client.on("keyboard-interactive", (_name, _instructions, _lang, prompts, finish) => {
+      finish(prompts.map(() => resolved.password!));
+    });
   }
 
   client.on("ready", () => onReady(client));
