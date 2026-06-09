@@ -32,7 +32,7 @@ export interface FolderOption {
   parent_id: string | null;
 }
 
-const PROTOCOLS: ConnectionProtocol[] = ["ssh", "vnc", "rdp"];
+const PROTOCOLS: ConnectionProtocol[] = ["ssh", "telnet", "vnc", "rdp"];
 
 interface CredentialOption {
   id: string;
@@ -106,16 +106,19 @@ export function ConnectionForm({
   const [tags, setTags] = useState(initial?.tags || "");
   const [enabled, setEnabled] = useState<Record<ConnectionProtocol, boolean>>({
     ssh: initialMethods.some((m) => m.protocol === "ssh"),
+    telnet: initialMethods.some((m) => m.protocol === "telnet"),
     vnc: initialMethods.some((m) => m.protocol === "vnc"),
     rdp: initialMethods.some((m) => m.protocol === "rdp"),
   });
   const [ports, setPorts] = useState<Record<ConnectionProtocol, string>>({
     ssh: String(initialMethods.find((m) => m.protocol === "ssh")?.port ?? defaultPort("ssh")),
+    telnet: String(initialMethods.find((m) => m.protocol === "telnet")?.port ?? defaultPort("telnet")),
     vnc: String(initialMethods.find((m) => m.protocol === "vnc")?.port ?? defaultPort("vnc")),
     rdp: String(initialMethods.find((m) => m.protocol === "rdp")?.port ?? defaultPort("rdp")),
   });
   const [credentialIds, setCredentialIds] = useState<Record<ConnectionProtocol, string>>({
     ssh: initialCredentialForProtocol("ssh", initialMethods, initial?.credential_id),
+    telnet: initialCredentialForProtocol("telnet", initialMethods, initial?.credential_id),
     vnc: initialCredentialForProtocol("vnc", initialMethods, initial?.credential_id),
     rdp: initialCredentialForProtocol("rdp", initialMethods, initial?.credential_id),
   });
@@ -312,6 +315,11 @@ export function ConnectionForm({
                       {PROTOCOL_LABELS[p].hint}
                     </span>
                   </label>
+                  {p === "telnet" && enabled[p] && (
+                    <div className="mt-2 rounded-md bg-amber-500/10 p-2 border border-amber-500/20 text-xs text-amber-500">
+                      <strong>Warning:</strong> Telnet sends data (including credentials) in plaintext. It is inherently insecure and should only be used on trusted internal networks.
+                    </div>
+                  )}
                   {enabled[p] && (
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="space-y-1">

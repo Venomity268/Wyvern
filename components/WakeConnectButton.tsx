@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 
 const PROTOCOL_ICONS: Record<ConnectionProtocol, typeof Terminal> = {
   ssh: Terminal,
+  telnet: Terminal,
   vnc: Monitor,
   rdp: Monitor,
 };

@@ -12,7 +12,7 @@ import type { ConnectionProtocol } from "@/lib/protocols";
 import { PROTOCOL_LABELS } from "@/lib/protocols";
 import { Loader2, Zap } from "lucide-react";
 
-const PROTOCOLS: ConnectionProtocol[] = ["ssh", "vnc", "rdp"];
+const PROTOCOLS: ConnectionProtocol[] = ["ssh", "telnet", "vnc", "rdp"];
 
 export function QuickConnectForm() {
   const router = useRouter();
@@ -114,6 +114,11 @@ export function QuickConnectForm() {
               ))}
             </div>
             <p className="text-xs text-zinc-500">{PROTOCOL_LABELS[protocol].hint}</p>
+            {protocol === "telnet" && (
+              <div className="mt-2 rounded-md bg-amber-500/10 p-2 border border-amber-500/20 text-xs text-amber-500">
+                <strong>Warning:</strong> Telnet sends data (including credentials) in plaintext. It is inherently insecure and should only be used on trusted internal networks.
+              </div>
+            )}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-[1fr_100px]">
@@ -153,7 +158,7 @@ export function QuickConnectForm() {
               id="qc-user"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              required={protocol !== "vnc"}
+              required={protocol === "rdp"}
               className="border-zinc-700 bg-zinc-900"
             />
           </div>
@@ -184,7 +189,8 @@ export function QuickConnectForm() {
                 className="border-zinc-700 bg-zinc-900 font-mono text-xs"
               />
             </div>
-          ) : (
+          ) : null}
+          {(protocol === "ssh" || protocol === "telnet") && authMethod === "password" ? (
             <div className="space-y-1">
               <Label htmlFor="qc-pass">Password</Label>
               <Input
@@ -192,11 +198,11 @@ export function QuickConnectForm() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                required
+                required={protocol === "ssh"}
                 className="border-zinc-700 bg-zinc-900"
               />
             </div>
-          )}
+          ) : null}
 
           {(protocol === "vnc" || protocol === "rdp") && (
             <div className="space-y-1">

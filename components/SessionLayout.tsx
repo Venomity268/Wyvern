@@ -8,7 +8,7 @@ import { ArrowLeft } from "lucide-react";
 import { useIsMobile } from "@/lib/hooks/useIsMobile";
 import { cn } from "@/lib/utils";
 
-type SessionProtocol = "ssh" | "vnc" | "rdp";
+type SessionProtocol = "ssh" | "telnet" | "vnc" | "rdp";
 
 interface SessionLayoutProps {
   title: string;

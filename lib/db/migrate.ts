@@ -19,6 +19,7 @@ export function runMigrations(db: Database.Database) {
   migrateFolders(db);
   migrateTotp(db);
   migrateUserAvatar(db);
+  migrateTelnetProtocol(db);
 }
 
 function migrateUserAvatar(db: Database.Database) {
@@ -602,4 +603,57 @@ function migrateConnectionsProtocol(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_connections_owner ON connections(owner_id);
     COMMIT;
   `);
+}
+
+function migrateTelnetProtocol(db: Database.Database) {
+  // Rebuild connection_methods CHECK constraint to include 'telnet'
+  const cmSql = tableSql(db, "connection_methods");
+  if (cmSql && !cmSql.includes("'telnet'")) {
+    db.exec(`
+      BEGIN;
+      CREATE TABLE connection_methods_telnet (
+        id TEXT PRIMARY KEY,
+        connection_id TEXT NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
+        protocol TEXT NOT NULL CHECK (protocol IN ('ssh', 'telnet', 'vnc', 'rdp')),
+        port INTEGER NOT NULL,
+        credential_id TEXT,
+        UNIQUE(connection_id, protocol)
+      );
+      INSERT INTO connection_methods_telnet (id, connection_id, protocol, port, credential_id)
+        SELECT id, connection_id, protocol, port, credential_id FROM connection_methods;
+      DROP TABLE connection_methods;
+      ALTER TABLE connection_methods_telnet RENAME TO connection_methods;
+      CREATE INDEX IF NOT EXISTS idx_connection_methods_conn ON connection_methods(connection_id);
+      COMMIT;
+    `);
+  }
+
+  // Rebuild quick_sessions CHECK constraint to include 'telnet'
+  const qsSql = tableSql(db, "quick_sessions");
+  if (qsSql && !qsSql.includes("'telnet'")) {
+    db.exec(`
+      BEGIN;
+      CREATE TABLE quick_sessions_telnet (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        label TEXT NOT NULL,
+        hostname TEXT NOT NULL,
+        port INTEGER NOT NULL,
+        protocol TEXT NOT NULL CHECK (protocol IN ('ssh', 'telnet', 'vnc', 'rdp')),
+        username TEXT,
+        encrypted_password TEXT,
+        encrypted_private_key TEXT,
+        mac_address TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        expires_at TEXT NOT NULL
+      );
+      INSERT INTO quick_sessions_telnet
+        SELECT id, user_id, label, hostname, port, protocol, username, encrypted_password, encrypted_private_key, mac_address, created_at, expires_at
+        FROM quick_sessions;
+      DROP TABLE quick_sessions;
+      ALTER TABLE quick_sessions_telnet RENAME TO quick_sessions;
+      CREATE INDEX IF NOT EXISTS idx_quick_sessions_user ON quick_sessions(user_id);
+      COMMIT;
+    `);
+  }
 }

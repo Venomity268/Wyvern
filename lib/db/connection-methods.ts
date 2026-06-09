@@ -54,13 +54,14 @@ export function getMethodCredential(
   return row?.credential_id ?? null;
 }
 
-export function resolveSshMethodCredential(
+export function resolveTerminalMethodCredential(
   db: Database.Database,
   connectionId: string,
+  protocol: "ssh" | "telnet",
   legacyCredentialId: string | null,
 ): string | null {
-  if (connectionHasMethod(db, connectionId, "ssh")) {
-    return getMethodCredential(db, connectionId, "ssh");
+  if (connectionHasMethod(db, connectionId, protocol)) {
+    return getMethodCredential(db, connectionId, protocol);
   }
   return legacyCredentialId;
 }

@@ -65,6 +65,7 @@ export default async function QuickConnectSessionPage({ params }: PageProps) {
       workspaces={workspaces}
     >
       <SshSessionViewer
+        protocol={quick.protocol as "ssh" | "telnet"}
         quickSessionId={quick.id}
         connectionName={quick.label}
         hostname={quick.hostname}

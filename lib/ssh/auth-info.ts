@@ -1,18 +1,18 @@
 import { getDb } from "@/lib/db/index";
-import { resolveGuacMethodCredential, resolveSshMethodCredential } from "@/lib/db/connection-methods";
+import { resolveGuacMethodCredential, resolveTerminalMethodCredential } from "@/lib/db/connection-methods";
 
 export interface SshAuthInfo {
   defaultUsername: string | null;
   hasStoredCredential: boolean;
 }
 
-export function sshAuthInfo(connection: {
+export function terminalAuthInfo(connection: {
   id: string;
   username: string | null;
   credential_id: string | null;
-}): SshAuthInfo {
+}, protocol: "ssh" | "telnet"): SshAuthInfo {
   const db = getDb();
-  const credentialId = resolveSshMethodCredential(db, connection.id, connection.credential_id);
+  const credentialId = resolveTerminalMethodCredential(db, connection.id, protocol, connection.credential_id);
 
   if (!credentialId) {
     return { defaultUsername: connection.username, hasStoredCredential: false };

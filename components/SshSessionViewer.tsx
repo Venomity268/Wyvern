@@ -18,6 +18,7 @@ import { FileManagerPanel } from "@/components/file-manager/FileManagerPanel";
 import { DockerPanel } from "@/components/DockerPanel";
 import { SnippetPanel } from "@/components/SnippetPanel";
 import { CommandPalette } from "@/components/CommandPalette";
+import { SessionSidebar } from "@/components/session/SessionSidebar";
 import { useIsMobile } from "@/lib/hooks/useIsMobile";
 import { useIsTouchDevice } from "@/lib/hooks/useIsTouchDevice";
 import { usePreventBackspaceNavigation } from "@/lib/hooks/usePreventBackspaceNavigation";
@@ -41,8 +42,10 @@ interface PaneSessionProps {
   quickSessionId?: string;
   connectionName: string;
   hostname: string;
+  protocol?: "ssh" | "telnet";
   defaultUsername?: string | null;
   hasStoredCredential: boolean;
+  tabStates: Record<string, import("@/lib/store/sessionStore").TabState>;
   terminalRefs: React.RefObject<Map<string, SshTerminalHandle>>;
   sessionCredentials: {
     username: string;
@@ -62,6 +65,7 @@ interface SshSessionViewerProps {
   quickSessionId?: string;
   connectionName: string;
   hostname: string;
+  protocol?: "ssh" | "telnet";
   defaultUsername?: string | null;
   hasStoredCredential: boolean;
   chromeless?: boolean;
@@ -112,6 +116,7 @@ const StableTerminalInstance = React.memo(function StableTerminalInstance({
   quickSessionId,
   connectionName,
   hostname,
+  protocol,
   defaultUsername,
   hasStoredCredential,
   autoFocusOnConnect,
@@ -129,6 +134,7 @@ const StableTerminalInstance = React.memo(function StableTerminalInstance({
   quickSessionId?: string;
   connectionName: string;
   hostname: string;
+  protocol?: "ssh" | "telnet";
   defaultUsername?: string | null;
   hasStoredCredential: boolean;
   autoFocusOnConnect?: boolean;
@@ -152,6 +158,7 @@ const StableTerminalInstance = React.memo(function StableTerminalInstance({
       quickSessionId={quickSessionId}
       connectionName={connectionName}
       hostname={hostname}
+      protocol={protocol}
       defaultUsername={defaultUsername}
       hasStoredCredential={hasStoredCredential}
       execCommand={execCommand}
@@ -209,7 +216,8 @@ const PaneLayout = ({
     direction: "horizontal" | "vertical",
     execCommand?: string,
     title?: string,
-    componentType?: "terminal" | "docker" | "files"
+    componentType?: "terminal" | "docker" | "files",
+    connectionOverride?: any
   ) => void;
   onClosePane: (targetId: string) => void;
   activeTabId: string;
@@ -248,6 +256,27 @@ const PaneLayout = ({
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
+
+          const draggedConnectionRaw = e.dataTransfer.getData("application/json+connection");
+          if (draggedConnectionRaw) {
+            try {
+              const conn = JSON.parse(draggedConnectionRaw);
+              const override = {
+                connectionId: conn.id,
+                connectionName: conn.name,
+                hostname: conn.hostname,
+                protocol: conn.protocol,
+                defaultUsername: conn.username,
+                hasStoredCredential: !!conn.credential_id,
+              };
+              onSplit(node.id, "horizontal", undefined, conn.name, "terminal", override);
+              return;
+            } catch (err) {
+              console.error("Failed to parse dragged connection", err);
+            }
+          }
+
+          const targetId = node.id;
           const draggedTabId = e.dataTransfer.getData("text/tab-id");
           if (draggedTabId) {
             mergeTab(draggedTabId, activeTabId, node.id);
@@ -402,6 +431,7 @@ export function SshSessionViewer({
   quickSessionId,
   connectionName,
   hostname,
+  protocol,
   defaultUsername,
   hasStoredCredential,
   chromeless = false,
@@ -417,6 +447,7 @@ export function SshSessionViewer({
   const slotElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const slotObserversRef = useRef<Map<string, ResizeObserver>>(new Map());
   const [paneRects, setPaneRects] = useState<Record<string, PaneRect>>({});
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const isMobile = useIsMobile();
   const isTouchDevice = useIsTouchDevice();
 
@@ -744,8 +775,13 @@ export function SshSessionViewer({
     triggerReconnect();
   };
 
-  const handleCreateNewTab = () => {
-    createNewTab();
+  const handleCreateNewTab = (
+    execCommand?: string,
+    title?: string,
+    componentType?: "terminal" | "docker" | "files",
+    connectionOverride?: any
+  ) => {
+    createNewTab(execCommand, title, componentType, connectionOverride);
   };
 
   const handleSplit = (
@@ -753,9 +789,10 @@ export function SshSessionViewer({
     direction: "horizontal" | "vertical",
     execCommand?: string,
     title?: string,
-    componentType: "terminal" | "docker" | "files" = "terminal"
+    componentType: "terminal" | "docker" | "files" = "terminal",
+    connectionOverride?: any
   ) => {
-    splitPane(targetId, direction, execCommand, title, componentType);
+    splitPane(targetId, direction, execCommand, title, componentType, connectionOverride);
   };
 
   const handleSplitActivePane = (direction: "horizontal" | "vertical") => {
@@ -996,25 +1033,30 @@ export function SshSessionViewer({
   const sftpOpen = activeComponentType === "files";
   const dockerOpen = activeComponentType === "docker";
 
-  const paneSession: PaneSessionProps = {
-    connectionId,
-    quickSessionId,
-    connectionName,
-    hostname,
-    defaultUsername,
-    hasStoredCredential,
-    terminalRefs,
-    sessionCredentials: mainState.sessionCredentials ?? sessionCredentials,
-    sshConnected: isMainConnected,
-    updateTabState,
-    clearTabState,
-    resetSidePanels,
-    onTerminalSlotMount: handleTerminalSlotMount,
-    onDockerAttach: (paneId, containerId, containerName) => {
-      const execCommand = `docker exec -it ${containerId} bash || sudo docker exec -it ${containerId} bash || docker exec -it ${containerId} sh || sudo docker exec -it ${containerId} sh`;
-      handleSplit(paneId, "horizontal", execCommand, `Exec: ${containerName}`);
-    },
-  };
+  const sessionProps: PaneSessionProps = useMemo(
+    () => ({
+      connectionId,
+      quickSessionId,
+      connectionName,
+      hostname,
+      protocol,
+      defaultUsername,
+      hasStoredCredential,
+      tabStates,
+      terminalRefs,
+      sessionCredentials: mainState.sessionCredentials ?? sessionCredentials ?? null,
+      sshConnected: isMainConnected,
+      updateTabState,
+      clearTabState,
+      resetSidePanels,
+      onTerminalSlotMount: handleTerminalSlotMount,
+      onDockerAttach: (paneId, containerId, containerName) => {
+        const execCommand = `docker exec -it ${containerId} bash || sudo docker exec -it ${containerId} bash || docker exec -it ${containerId} sh || sudo docker exec -it ${containerId} sh`;
+        handleSplit(paneId, "horizontal", execCommand, `Exec: ${containerName}`);
+      },
+    }),
+    [connectionId, quickSessionId, connectionName, hostname, protocol, defaultUsername, hasStoredCredential, tabStates, mainState.sessionCredentials, sessionCredentials, isMainConnected]
+  );
 
   const sessionEndpoint = `${defaultUsername ? `${defaultUsername}@` : ""}${hostname}`;
   const sessionStatus =
@@ -1022,15 +1064,16 @@ export function SshSessionViewer({
     : mainState.sessionState === "connecting" ? "connecting"
     : "disconnected";
 
-  const sessionToolbar =
-    isMainConnected ?
+  const sessionToolbar = (
       <SshToolbar
+        isConnected={isMainConnected}
         isFullscreen={isFullscreen}
         clipboardOpen={clipboardOpen}
         portForwardOpen={sidePanel === "ports" || portOverlay}
         sftpOpen={sftpOpen}
         dockerOpen={dockerOpen}
         snippetsOpen={sidePanel === "snippets"}
+        sidebarOpen={sidebarOpen}
         isBroadcasting={isBroadcasting}
         isRecording={activePaneState.isRecording}
         showPortForward={canPortForward}
@@ -1040,16 +1083,16 @@ export function SshSessionViewer({
         onToggleSftp={toggleSftp}
         onToggleDocker={toggleDocker}
         onToggleSnippets={toggleSnippets}
+        onToggleSidebar={() => setSidebarOpen((v) => !v)}
         onToggleBroadcasting={toggleBroadcasting}
         onToggleRecording={() => toggleRecording(activePaneId)}
         onReconnect={handleReconnect}
         onDisconnect={handleDisconnect}
         onFocusTerminal={() => activeTerminal?.focus()}
       />
-    : undefined;
+  );
 
-  const sessionTabs =
-    isMainConnected ?
+  const sessionTabs = (
       <>
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto scrollbar-none">
           {tabs.map((tab) => {
@@ -1066,6 +1109,26 @@ export function SshSessionViewer({
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
                   e.preventDefault();
+                  
+                  const draggedConnectionRaw = e.dataTransfer.getData("application/json+connection");
+                  if (draggedConnectionRaw) {
+                    try {
+                      const conn = JSON.parse(draggedConnectionRaw);
+                      const override = {
+                        connectionId: conn.id,
+                        connectionName: conn.name,
+                        hostname: conn.hostname,
+                        protocol: conn.protocol,
+                        defaultUsername: conn.username,
+                        hasStoredCredential: !!conn.credential_id,
+                      };
+                      handleCreateNewTab(undefined, conn.name, "terminal", override);
+                      return;
+                    } catch (err) {
+                      console.error("Failed to parse dragged connection", err);
+                    }
+                  }
+
                   const draggedTabId = e.dataTransfer.getData("text/tab-id");
                   const draggedPaneId = e.dataTransfer.getData("text/pane-id");
                   const sourceTabId = e.dataTransfer.getData("text/source-tab-id");
@@ -1104,7 +1167,7 @@ export function SshSessionViewer({
             variant="ghost"
             size="icon"
             className="h-7 w-7 shrink-0"
-            onClick={handleCreateNewTab}
+            onClick={() => handleCreateNewTab()}
             title="New tab (Alt+Shift+N)"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -1127,7 +1190,7 @@ export function SshSessionViewer({
           </Button>
         </div>
       </>
-    : undefined;
+  );
 
   const sessionBody = (
     <div ref={containerRef} className="relative flex h-full min-h-0 flex-1 flex-col bg-background">
@@ -1224,7 +1287,7 @@ export function SshSessionViewer({
                         onClosePane={handleClosePane}
                         activeTabId={activeTabId}
                         mergeTab={mergeTab}
-                        session={paneSession}
+                        session={sessionProps}
                       />
                     </div>
                   );
@@ -1238,24 +1301,31 @@ export function SshSessionViewer({
                       style={getTerminalOverlayStyle(pane.id, pane.tabId)}
                       className="absolute flex min-h-0 min-w-0 flex-col select-text"
                     >
-                      <StableTerminalInstance
-                        paneId={pane.id}
-                        execCommand={pane.execCommand}
-                        terminalRefs={terminalRefs}
-                        connectionId={connectionId}
-                        quickSessionId={quickSessionId}
-                        connectionName={connectionName}
-                        hostname={hostname}
-                        defaultUsername={defaultUsername}
-                        hasStoredCredential={hasStoredCredential}
-                        autoFocusOnConnect={isTouchDevice}
-                        updateTabState={updateTabState}
-                        clearTabState={clearTabState}
-                        resetSidePanels={resetSidePanels}
-                        onData={handleData}
-                        onJsonMessage={handleJsonMessage}
-                        isRecording={tabStates[pane.id]?.isRecording}
-                      />
+                      {(() => {
+                        const override = tabStates[pane.id]?.connectionOverride;
+                        return (
+                          <StableTerminalInstance
+                            key={reconnectKey}
+                            paneId={pane.id}
+                            execCommand={pane.execCommand}
+                            terminalRefs={terminalRefs}
+                            connectionId={override?.connectionId ?? connectionId}
+                            quickSessionId={override?.quickSessionId ?? quickSessionId}
+                            connectionName={override?.connectionName ?? connectionName}
+                            hostname={override?.hostname ?? hostname}
+                            protocol={override?.protocol ?? protocol}
+                            defaultUsername={override?.defaultUsername ?? defaultUsername}
+                            hasStoredCredential={override?.hasStoredCredential ?? hasStoredCredential}
+                            autoFocusOnConnect={isTouchDevice}
+                            updateTabState={updateTabState}
+                            clearTabState={clearTabState}
+                            resetSidePanels={resetSidePanels}
+                            onData={handleData}
+                            onJsonMessage={handleJsonMessage}
+                            isRecording={tabStates[pane.id]?.isRecording}
+                          />
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>
@@ -1307,7 +1377,12 @@ export function SshSessionViewer({
       toolbar={sessionToolbar}
       tabs={sessionTabs}
     >
-      {sessionBody}
+      <div className="flex h-full min-h-0 flex-1 overflow-hidden">
+        {sidebarOpen && (
+          <SessionSidebar className="w-64 shrink-0" />
+        )}
+        {sessionBody}
+      </div>
       <CommandPalette />
     </SessionLayout>
   );

@@ -7,6 +7,7 @@ import GuacamoleLite from "guacamole-lite";
 import { getDb } from "./lib/db/index";
 import { getSessionUserFromRequest } from "./lib/auth/session-request";
 import { handleSshConnection } from "./lib/bridges/ssh-bridge";
+import { handleTelnetConnection } from "./lib/bridges/telnet-bridge";
 import { handleSftpConnection } from "./lib/bridges/sftp-bridge";
 import { handleGuacOpen, handleGuacClose } from "./lib/bridges/guac-history";
 import { getGuacdOptions, getGuacClientOptions } from "./lib/guac/config";
@@ -61,6 +62,7 @@ app.prepare().then(() => {
 
   const sshWss = new WebSocketServer({ noServer: true });
   const sftpWss = new WebSocketServer({ noServer: true });
+  const telnetWss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", async (req, socket, head) => {
     const { pathname } = parse(req.url || "/", true);
@@ -96,6 +98,22 @@ app.prepare().then(() => {
 
       sftpWss.handleUpgrade(req, socket, head, (ws) => {
         handleSftpConnection(ws, user);
+      });
+    } else if (pathname === "/api/telnet") {
+      let user;
+      try {
+        user = await getSessionUserFromRequest(req);
+      } catch {
+        user = null;
+      }
+      if (!user) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      telnetWss.handleUpgrade(req, socket, head, (ws) => {
+        handleTelnetConnection(ws, user);
       });
     } else if (pathname === "/api/guac") {
       guacServer.webSocketServer.handleUpgrade(req, socket, head, (ws) => {

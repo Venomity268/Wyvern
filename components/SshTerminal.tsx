@@ -40,6 +40,7 @@ interface SshConnectionInfo {
 export type SshConnectionState = "auth" | "connecting" | "connected" | "error";
 
 interface SshTerminalCoreProps {
+  protocol?: "ssh" | "telnet";
   connectionId?: string;
   quickSessionId?: string;
   connectionName: string;
@@ -96,6 +97,7 @@ function useTerminalDimensions(sizeContainerRef?: React.RefObject<HTMLElement | 
 const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>(
   function SshTerminal(
     {
+      protocol = "ssh",
       connectionId,
       quickSessionId,
       connectionName,
@@ -459,7 +461,8 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
         const resolvedPassword = auth?.password || password;
         const resolvedPrivateKey = auth?.privateKey || privateKey;
 
-        const ws = new WebSocket(wsUrl("/api/ssh"));
+        const endpoint = protocol === "telnet" ? "/api/telnet" : "/api/ssh";
+        const ws = new WebSocket(wsUrl(endpoint));
         wsRef.current = ws;
         ws.binaryType = "arraybuffer";
 
@@ -583,6 +586,7 @@ const SshTerminalComponent = forwardRef<SshTerminalHandle, SshTerminalCoreProps>
         autoFocusOnConnect,
         onWebSocketReady,
         execCommand,
+        protocol,
       ],
     );
 

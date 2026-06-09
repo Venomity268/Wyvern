@@ -58,9 +58,10 @@ interface ConnectionListProps {
 
 const PROTOCOL_STYLE: Record<
   ConnectionProtocol,
-  { icon: typeof Terminal; badge: "ssh" | "vnc" | "rdp"; ring: string }
+  { icon: typeof Terminal; badge: "ssh" | "vnc" | "rdp" | "telnet"; ring: string }
 > = {
   ssh: { icon: Terminal, badge: "ssh", ring: "ring-emerald-500/20" },
+  telnet: { icon: Terminal, badge: "telnet", ring: "ring-orange-500/20" },
   vnc: { icon: Monitor, badge: "vnc", ring: "ring-sky-500/20" },
   rdp: { icon: Monitor, badge: "rdp", ring: "ring-violet-500/20" },
 };

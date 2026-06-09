@@ -16,17 +16,20 @@ import {
   Code2,
   RadioTower,
   Video,
+  Server,
 } from "lucide-react";
 import { useIsTouchDevice } from "@/lib/hooks/useIsTouchDevice";
 import { SessionToolButton, SessionToolDivider } from "@/components/session/SessionToolButton";
 
 interface SshToolbarProps {
+  isConnected?: boolean;
   isFullscreen: boolean;
   clipboardOpen: boolean;
   portForwardOpen: boolean;
   sftpOpen: boolean;
   dockerOpen: boolean;
   snippetsOpen: boolean;
+  sidebarOpen?: boolean;
   isBroadcasting?: boolean;
   isRecording?: boolean;
   showPortForward?: boolean;
@@ -36,6 +39,7 @@ interface SshToolbarProps {
   onToggleSftp: () => void;
   onToggleDocker: () => void;
   onToggleSnippets: () => void;
+  onToggleSidebar?: () => void;
   onToggleBroadcasting?: () => void;
   onToggleRecording?: () => void;
   onReconnect: () => void;
@@ -44,12 +48,14 @@ interface SshToolbarProps {
 }
 
 export function SshToolbar({
+  isConnected = true,
   isFullscreen,
   clipboardOpen,
   portForwardOpen,
   sftpOpen,
   dockerOpen,
   snippetsOpen,
+  sidebarOpen,
   isBroadcasting,
   isRecording,
   showPortForward = true,
@@ -59,6 +65,7 @@ export function SshToolbar({
   onToggleSftp,
   onToggleDocker,
   onToggleSnippets,
+  onToggleSidebar,
   onToggleBroadcasting,
   onToggleRecording,
   onReconnect,
@@ -70,12 +77,18 @@ export function SshToolbar({
   return (
     <>
       {onFocusTerminal && isTouchDevice && (
-        <SessionToolButton title="Show keyboard" onClick={onFocusTerminal}>
+        <SessionToolButton disabled={!isConnected} title="Show keyboard" onClick={onFocusTerminal}>
           <Keyboard className="h-4 w-4" />
+        </SessionToolButton>
+      )}
+      {onToggleSidebar && (
+        <SessionToolButton active={sidebarOpen} title="Connections" onClick={onToggleSidebar}>
+          <Server className="h-4 w-4" />
         </SessionToolButton>
       )}
       {showPortForward && (
         <SessionToolButton
+          disabled={!isConnected}
           active={portForwardOpen}
           title="Port forwarding"
           onClick={onTogglePortForward}
@@ -83,13 +96,13 @@ export function SshToolbar({
           <Network className="h-4 w-4" />
         </SessionToolButton>
       )}
-      <SessionToolButton active={sftpOpen} title="Remote files" onClick={onToggleSftp}>
+      <SessionToolButton disabled={!isConnected} active={sftpOpen} title="Remote files" onClick={onToggleSftp}>
         <FolderOpen className="h-4 w-4" />
       </SessionToolButton>
-      <SessionToolButton active={dockerOpen} title="Docker containers" onClick={onToggleDocker}>
+      <SessionToolButton disabled={!isConnected} active={dockerOpen} title="Docker containers" onClick={onToggleDocker}>
         <Box className="h-4 w-4" />
       </SessionToolButton>
-      <SessionToolButton active={snippetsOpen} title="Command Snippets" onClick={onToggleSnippets}>
+      <SessionToolButton disabled={!isConnected} active={snippetsOpen} title="Command Snippets" onClick={onToggleSnippets}>
         <Code2 className="h-4 w-4" />
       </SessionToolButton>
 
@@ -97,6 +110,7 @@ export function SshToolbar({
 
       {onToggleBroadcasting && (
         <SessionToolButton
+          disabled={!isConnected}
           active={isBroadcasting}
           title={isBroadcasting ? "Stop Broadcasting Input" : "Broadcast Input to All Panes"}
           onClick={onToggleBroadcasting}
@@ -107,6 +121,7 @@ export function SshToolbar({
 
       {onToggleRecording && (
         <SessionToolButton
+          disabled={!isConnected}
           active={isRecording}
           title={isRecording ? "Stop Recording (Export .cast)" : "Start Recording Session"}
           onClick={onToggleRecording}
@@ -116,6 +131,7 @@ export function SshToolbar({
       )}
 
       <SessionToolButton
+        disabled={!isConnected}
         active={clipboardOpen}
         title="Paste into terminal"
         onClick={onToggleClipboard}
@@ -136,7 +152,7 @@ export function SshToolbar({
       <SessionToolButton title="Reconnect" onClick={onReconnect}>
         <RefreshCw className="h-4 w-4" />
       </SessionToolButton>
-      <SessionToolButton title="Disconnect" destructive onClick={onDisconnect}>
+      <SessionToolButton disabled={!isConnected} title="Disconnect" destructive onClick={onDisconnect}>
         <LogOut className="h-4 w-4" />
       </SessionToolButton>
     </>

@@ -8,7 +8,7 @@ import { getMethodPort, getMethodsForConnection } from "@/lib/db/connection-meth
 import { findEmbeddedSshTarget } from "@/lib/ssh/embedded-target";
 import { SshSessionViewer, GuacamoleViewer } from "@/components/SessionViewerWrapper";
 import { isGuacProtocol, type ConnectionProtocol, type GuacProtocol } from "@/lib/protocols";
-import { sshAuthInfo, guacAuthInfo } from "@/lib/ssh/auth-info";
+import { terminalAuthInfo, guacAuthInfo } from "@/lib/ssh/auth-info";
 
 interface PageProps {
   params: Promise<{ connectionId: string }>;
@@ -67,12 +67,26 @@ export default async function SessionPage({ params, searchParams }: PageProps) {
     connection.port;
 
   const sshTarget = findEmbeddedSshTarget(db, session.user.id, connection);
+  const terminalAuth = !isGuacProtocol(activeProtocol)
+    ? terminalAuthInfo(
+        {
+          id: connection.id,
+          username: connection.username,
+          credential_id: connection.credential_id,
+        },
+        activeProtocol as "ssh" | "telnet"
+      )
+    : { defaultUsername: null, hasStoredCredential: false };
+
   const sshAuth = sshTarget
-    ? sshAuthInfo({
-        id: sshTarget.connectionId,
-        username: sshTarget.username,
-        credential_id: sshTarget.credential_id,
-      })
+    ? terminalAuthInfo(
+        {
+          id: sshTarget.connectionId,
+          username: sshTarget.username,
+          credential_id: sshTarget.credential_id,
+        },
+        "ssh"
+      )
     : { defaultUsername: null, hasStoredCredential: false };
   const hasSshAccess = !!sshTarget;
 
@@ -99,11 +113,12 @@ export default async function SessionPage({ params, searchParams }: PageProps) {
 
   return (
     <SshSessionViewer
+      protocol={activeProtocol as "ssh" | "telnet"}
       connectionId={connection.id}
       connectionName={connection.name}
       hostname={connection.hostname}
-      defaultUsername={sshAuth.defaultUsername}
-      hasStoredCredential={sshAuth.hasStoredCredential}
+      defaultUsername={terminalAuth.defaultUsername}
+      hasStoredCredential={terminalAuth.hasStoredCredential}
     />
   );
 }

@@ -13,6 +13,7 @@ const badgeVariants = cva(
         destructive: "border-red-500/20 bg-red-500/10 text-red-400",
         outline: "border-border text-muted-foreground",
         ssh: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
+        telnet: "border-orange-500/20 bg-orange-500/10 text-orange-400",
         vnc: "border-sky-500/20 bg-sky-500/10 text-sky-400",
         rdp: "border-violet-500/20 bg-violet-500/10 text-violet-400",
       },

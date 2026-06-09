@@ -41,8 +41,17 @@ export interface TerminalTab {
 export interface TabState {
   sessionState: SshConnectionState;
   shellWs: WebSocket | null;
-  sessionCredentials: SessionCredentials | null;
+  sessionCredentials?: SessionCredentials;
   isRecording?: boolean;
+  connectionOverride?: {
+    connectionId?: string;
+    quickSessionId?: string;
+    connectionName: string;
+    hostname: string;
+    protocol?: "ssh" | "telnet";
+    defaultUsername?: string | null;
+    hasStoredCredential?: boolean;
+  };
 }
 
 // Tree Helpers
@@ -243,7 +252,8 @@ interface SessionState {
   createNewTab: (
     execCommand?: string,
     title?: string,
-    componentType?: "terminal" | "docker" | "files"
+    componentType?: "terminal" | "docker" | "files",
+    connectionOverride?: TabState["connectionOverride"]
   ) => void;
   closeTab: (tabId: string, disconnectCb: (termId: string) => void) => void;
   splitPane: (
@@ -251,7 +261,8 @@ interface SessionState {
     direction: "horizontal" | "vertical",
     execCommand?: string,
     title?: string,
-    componentType?: "terminal" | "docker" | "files"
+    componentType?: "terminal" | "docker" | "files",
+    connectionOverride?: TabState["connectionOverride"]
   ) => void;
   closePane: (paneId: string, disconnectCb: (termId: string) => void) => void;
   updateSplitSizes: (branchId: string, sizes: number[]) => void;
@@ -356,11 +367,20 @@ export const useSessionStore = create<SessionState>()(
 
   resetAllTabStates: () => set({ tabStates: {} }),
 
-  createNewTab: (execCommand, title, componentType = "terminal") =>
+  createNewTab: (execCommand, title, componentType = "terminal", connectionOverride) =>
     set((state) => {
       const newTabId = `tab-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
       const newTermId = `term-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
       const newTitle = title || `Terminal ${state.allTerminals.length + 1}`;
+      
+      const newTabStates = { ...state.tabStates };
+      if (connectionOverride) {
+        newTabStates[newTermId] = {
+          sessionState: connectionOverride.hasStoredCredential ? "connecting" : "auth",
+          shellWs: null,
+          connectionOverride,
+        };
+      }
 
       return {
         allTerminals: [...state.allTerminals, { id: newTermId, title: newTitle, execCommand }],
@@ -378,6 +398,7 @@ export const useSessionStore = create<SessionState>()(
             },
           },
         ],
+        tabStates: newTabStates,
         activeTabId: newTabId,
         activePaneId: newTermId,
       };
@@ -419,10 +440,19 @@ export const useSessionStore = create<SessionState>()(
       };
     }),
 
-  splitPane: (targetId, direction, execCommand, title, componentType = "terminal") =>
+  splitPane: (targetId, direction, execCommand, title, componentType = "terminal", connectionOverride) =>
     set((state) => {
       const newTermId = `term-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
       const newTitle = title || `Terminal ${state.allTerminals.length + 1}`;
+
+      const newTabStates = { ...state.tabStates };
+      if (connectionOverride) {
+        newTabStates[newTermId] = {
+          sessionState: connectionOverride.hasStoredCredential ? "connecting" : "auth",
+          shellWs: null,
+          connectionOverride,
+        };
+      }
 
       const nextTabs = state.tabs.map((tab) => {
         if (tab.id !== state.activeTabId) return tab;
@@ -440,8 +470,9 @@ export const useSessionStore = create<SessionState>()(
       });
 
       return {
-        allTerminals: [...state.allTerminals, { id: newTermId, title: newTitle, execCommand }],
         tabs: nextTabs,
+        tabStates: newTabStates,
+        allTerminals: [...state.allTerminals, { id: newTermId, title: newTitle, execCommand }],
         activePaneId: newTermId,
       };
     }),

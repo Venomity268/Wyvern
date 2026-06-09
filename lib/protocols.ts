@@ -1,4 +1,4 @@
-export type ConnectionProtocol = "ssh" | "vnc" | "rdp";
+export type ConnectionProtocol = "ssh" | "telnet" | "vnc" | "rdp";
 
 export type GuacProtocol = "vnc" | "rdp";
 
@@ -9,6 +9,10 @@ export const PROTOCOL_LABELS: Record<
   ssh: {
     label: "SSH",
     hint: "Terminal remote login — Ubuntu OpenSSH, Linux servers (port 22)",
+  },
+  telnet: {
+    label: "Telnet",
+    hint: "Unencrypted terminal — network equipment, legacy systems (port 23)",
   },
   vnc: {
     label: "VNC",
@@ -24,10 +28,16 @@ export function isGuacProtocol(protocol: string): protocol is GuacProtocol {
   return protocol === "vnc" || protocol === "rdp";
 }
 
+export function isTerminalProtocol(protocol: string): protocol is "ssh" | "telnet" {
+  return protocol === "ssh" || protocol === "telnet";
+}
+
 export function defaultPort(protocol: ConnectionProtocol): number {
   switch (protocol) {
     case "ssh":
       return 22;
+    case "telnet":
+      return 23;
     case "rdp":
       return 3389;
     case "vnc":

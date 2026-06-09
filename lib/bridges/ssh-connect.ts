@@ -1,6 +1,6 @@
 import { Client } from "ssh2";
 import { getDb } from "../db/index";
-import { getMethodPort, resolveSshMethodCredential } from "../db/connection-methods";
+import { getMethodPort, resolveTerminalMethodCredential } from "../db/connection-methods";
 import { decryptSecret } from "../crypto/secrets";
 import { canViewConnection } from "../auth/access";
 import type { SessionUser } from "../auth/session-options";
@@ -73,10 +73,11 @@ export function resolveSshConnection(
   let privateKey = auth?.privateKey;
   let passphrase: string | undefined;
 
-  const credentialId = resolveSshMethodCredential(
+  const credentialId = resolveTerminalMethodCredential(
     db,
     id,
-    connection.credential_id,
+    "ssh",
+    connection.credential_id
   );
 
   let username = auth?.username || undefined;
